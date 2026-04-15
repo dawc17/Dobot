@@ -1,0 +1,93 @@
+{
+  "name": "untitled",
+  "version": 1,
+  "steps": [
+    {
+      "type": "move_to",
+      "params": {
+        "x": 200.0,
+        "y": 0.0,
+        "z": 50.0,
+        "r": 0.0
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 226.97,
+        "y": -0.2,
+        "z": 51.2,
+        "r": 0.0
+      }
+    },
+    {
+      "type": "suction",
+      "params": {
+        "on": true
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 194.01,
+        "y": -76.72,
+        "z": -2.55,
+        "r": 0.0
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 200.66,
+        "y": 0.04,
+        "z": 50.15,
+        "r": 0.0
+      }
+    },
+    {
+      "type": "suction",
+      "params": {
+        "on": false
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 136.95,
+        "y": 1.16,
+        "z": -64.95,
+        "r": 0.0
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 125.2,
+        "y": -116.7,
+        "z": 92.62,
+        "r": -39.48
+      }
+    },
+    {
+      "type": "suction",
+      "params": {
+        "on": true
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 163.69,
+        "y": -16.08,
+        "z": 35.1,
+        "r": -2.11
+      }
+    },
+    {
+      "type": "suction",
+      "params": {
+        "on": false
+      }
+    }
+  ]
+}
