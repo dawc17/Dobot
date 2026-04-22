@@ -51,10 +51,12 @@ class SseHub:
             except ValueError: pass
 
     def push(self, data: dict):
+        with self._lock:
+            if not self._qs:
+                return
+            qs = list(self._qs)
         msg = json.dumps(data)
         dead = []
-        with self._lock:
-            qs = list(self._qs)
         for q in qs:
             try: q.put_nowait(msg)
             except queue.Full: dead.append(q)
@@ -453,13 +455,30 @@ class DobotCore:
         elif t == "speed":    self.device.speed(p["velocity"], p["acceleration"])
         elif t == "set_io":   self.device.set_io(p["address"], p["state"])
         elif t == "conveyor_belt":
-            self.device.conveyor_belt(p["speed"], p["direction"], p["interface"])
+            spd = p["speed"]
+            self.conv_running   = spd > 0
+            self.conv_direction = p["direction"]
+            self.conv_interface = p["interface"]
+            hub.push({"type": "conveyor", "running": self.conv_running,
+                      "speed": spd, "direction": p["direction"], "interface": p["interface"]})
+            self.device.conveyor_belt(spd, p["direction"], p["interface"])
             if p["duration"] > 0:
                 self.seq_stop_evt.wait(timeout=p["duration"])
                 self.device.conveyor_belt(0, p["direction"], p["interface"])
+                self.conv_running = False
+                hub.push({"type": "conveyor", "running": False,
+                          "speed": 0, "direction": p["direction"], "interface": p["interface"]})
         elif t == "conveyor_belt_distance":
+            self.conv_running   = True
+            self.conv_direction = p["direction"]
+            self.conv_interface = p["interface"]
+            hub.push({"type": "conveyor", "running": True,
+                      "speed": p["speed"], "direction": p["direction"], "interface": p["interface"]})
             self.device.conveyor_belt_distance(
                 p["speed"], p["distance"], p["direction"], p["interface"])
+            self.conv_running = False
+            hub.push({"type": "conveyor", "running": False,
+                      "speed": 0, "direction": p["direction"], "interface": p["interface"]})
 
     def _seq_wait(self, cmd_idx):
         if cmd_idx is None: return
@@ -615,6 +634,40 @@ def api_seq_stop():
 @app.post("/api/sequence/loop")
 def api_seq_loop():
     looping = core.seq_loop_toggle(); return jsonify(looping=looping)
+
+
+_PORT_MAP = {
+    "GP1": Dobot.PORT_GP1,
+    "GP2": Dobot.PORT_GP2,
+    "GP4": Dobot.PORT_GP4,
+    "GP5": Dobot.PORT_GP5,
+}
+
+@app.post("/api/color_sensor")
+def api_color_sensor():
+    if not core.is_connected:
+        return jsonify(error="Not connected"), 400
+    d    = request.get_json(force=True) or {}
+    port = _PORT_MAP.get(d.get("port", "GP2"), Dobot.PORT_GP2)
+    try:
+        core.device.set_color(enable=True, port=port)
+        rgb = core.device.get_color(port=port)
+        return jsonify(r=bool(rgb[0]), g=bool(rgb[1]), b=bool(rgb[2]))
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.post("/api/ir_sensor")
+def api_ir_sensor():
+    if not core.is_connected:
+        return jsonify(error="Not connected"), 400
+    d    = request.get_json(force=True) or {}
+    port = _PORT_MAP.get(d.get("port", "GP4"), Dobot.PORT_GP4)
+    try:
+        core.device.set_ir(enable=True, port=port)
+        detected = core.device.get_ir(port=port)
+        return jsonify(detected=bool(detected))
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 
 
 if __name__ == "__main__":

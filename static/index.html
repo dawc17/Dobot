@@ -4,35 +4,44 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Dobot Controller</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 :root{
-  --bg:#16161e;--panel:#20202c;--dark:#1a1a24;--border:#343446;--sep:#303042;
-  --text:#e1e1eb;--dim:#8c8c9e;--muted:#525264;
-  --accent:#417dc3;--accent-h:#5591d7;--accent-p:#305fa8;
-  --danger:#af3a3a;--danger-h:#c64b4b;
-  --success:#30ac5f;--success-h:#41c070;
-  --warn:#cd9e34;--ok:#30c362;--bad:#c34444;
+  --bg:#16161e;--panel:#20202c;--deep:#111118;--border:#2a2a3e;--sep:#232334;
+  --text:#d0d0e4;--dim:#6060a0;--muted:#3e3e5a;
+  --accent:#3d7fe8;--accent-h:#5491f0;--accent-p:#2a5db8;
+  --amber:#e89220;--amber-h:#f0a834;
+  --danger:#cf3545;--danger-h:#e04555;
+  --success:#1fc46e;--success-h:#2ed880;
+  --warn:#c89c20;--ok:#1fc46e;--bad:#cf3545;
+  --mono:'Share Tech Mono','Consolas',monospace;
+  --ui:'Rajdhani','Segoe UI',sans-serif;
 }
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;
-  font-size:13px;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--ui);font-size:14px;
+  display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
 /* ── Header ── */
-header{display:flex;align-items:center;gap:10px;padding:0 14px;height:56px;
-  background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0}
-.title{font-size:15px;font-weight:700;letter-spacing:1.5px;margin-right:auto}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex-shrink:0}
-.dot.ok{background:var(--ok)}
-.dot.warn{background:var(--warn);animation:blink 1s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
-#status-text{font-size:11px;color:var(--dim);margin-right:8px}
-#port-select{background:var(--dark);color:var(--text);border:1px solid var(--border);
-  border-radius:4px;padding:4px 8px;font-size:13px;min-width:110px;outline:none}
+header{display:flex;align-items:center;gap:10px;padding:0 16px;height:50px;
+  background:var(--deep);border-bottom:1px solid var(--border);flex-shrink:0}
+.brand{font-family:var(--ui);font-weight:700;font-size:13px;letter-spacing:3px;
+  color:var(--amber);text-transform:uppercase;margin-right:auto}
+.brand em{color:var(--dim);font-style:normal;font-weight:500}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex-shrink:0;transition:background .3s}
+.sdot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.sdot.warn{background:var(--warn);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+#status-text{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--dim);margin-right:4px}
+select{background:var(--panel);color:var(--text);border:1px solid var(--border);
+  border-radius:3px;padding:4px 8px;font-size:13px;font-family:var(--ui);font-weight:500;
+  min-width:100px;outline:none}
 
 /* ── Buttons ── */
-button{background:var(--accent);color:var(--text);border:none;border-radius:4px;
-  padding:5px 10px;cursor:pointer;font-size:13px;white-space:nowrap;transition:background .1s}
+button{background:var(--accent);color:#fff;border:none;border-radius:3px;
+  padding:5px 12px;cursor:pointer;font-size:13px;font-family:var(--ui);font-weight:600;
+  letter-spacing:.4px;white-space:nowrap;transition:background .1s}
 button:hover:not(:disabled){background:var(--accent-h)}
 button:active:not(:disabled){background:var(--accent-p)}
 button.ghost{background:transparent;border:1px solid var(--border);color:var(--dim)}
@@ -45,105 +54,133 @@ button:disabled{background:var(--sep)!important;color:var(--muted)!important;cur
 .btn-row{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:6px}
 
 /* ── Layout ── */
-#main{display:grid;grid-template-columns:400px 290px 1fr;gap:8px;
-  padding:8px;flex:1;min-height:0;overflow:hidden}
-.col{display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0}
+#main{display:grid;grid-template-columns:360px 258px 1fr;gap:7px;
+  padding:7px;flex:1;min-height:0;overflow:hidden}
+.col{display:flex;flex-direction:column;gap:7px;overflow-y:auto;min-height:0}
 #col-seq{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 
 /* ── Panels ── */
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:6px;
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:4px;
   padding:10px 12px;flex-shrink:0}
 #panel-seq{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.ph{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;
-  padding-bottom:5px;margin-bottom:8px;border-bottom:1px solid var(--sep);
-  display:flex;justify-content:space-between;align-items:center}
+.ph{font-family:var(--ui);font-size:10px;font-weight:700;color:var(--dim);
+  text-transform:uppercase;letter-spacing:1.8px;padding-bottom:7px;margin-bottom:9px;
+  border-bottom:1px solid var(--sep);display:flex;justify-content:space-between;align-items:center}
 
 /* ── Position ── */
-.pos-row{display:flex;gap:4px}
-.pv{flex:1;text-align:center;background:var(--dark);border-radius:4px;padding:4px 2px}
-.pl{display:block;font-size:10px;color:var(--dim);margin-bottom:1px}
-.pv span:last-child{font-size:15px;font-weight:500;font-variant-numeric:tabular-nums}
+.pos-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.pos-cell{background:var(--deep);border-radius:3px;padding:6px 4px;text-align:center;
+  border:1px solid var(--sep)}
+.pos-lbl{display:block;font-size:9px;color:var(--dim);letter-spacing:1.5px;
+  font-weight:700;margin-bottom:2px}
+.pos-val{display:block;font-family:var(--mono);font-size:17px;color:var(--amber)}
 
 /* ── Forms ── */
-.form-row{display:grid;grid-template-columns:18px 1fr 18px 1fr;
-  align-items:center;gap:4px 6px;margin-bottom:5px}
-.form-row label{color:var(--dim);font-size:12px;text-align:right}
-input[type=number],input[type=text]{background:var(--dark);color:var(--text);
-  border:1px solid var(--border);border-radius:4px;padding:4px 7px;
-  font-size:13px;width:100%;outline:none}
+.form-row{display:grid;grid-template-columns:14px 1fr 14px 1fr;
+  align-items:center;gap:4px 8px;margin-bottom:5px}
+.form-row label{color:var(--dim);font-size:12px;font-weight:700;text-align:right}
+input[type=number],input[type=text]{background:var(--deep);color:var(--text);
+  border:1px solid var(--border);border-radius:3px;padding:4px 7px;
+  font-size:13px;font-family:var(--mono);width:100%;outline:none}
 input[type=number]:focus,input[type=text]:focus{border-color:var(--accent)}
 
 /* ── Step size ── */
-.step-row{display:flex;align-items:center;gap:5px;margin-bottom:7px}
+.step-row{display:flex;align-items:center;gap:4px;margin-bottom:7px}
+.step-lbl{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.5px}
 .step-btn{background:transparent;border:1px solid var(--border);color:var(--dim);
-  padding:3px 9px;font-size:12px;border-radius:4px}
-.step-btn.active{background:var(--accent);border-color:var(--accent);color:var(--text)}
+  padding:3px 10px;font-size:12px;font-family:var(--mono);border-radius:3px}
+.step-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
 .step-btn:hover:not(.active):not(:disabled){border-color:var(--dim);background:var(--sep)}
 
 /* ── Jog grid ── */
-.jog-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.jog-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.jog-grid button{font-family:var(--mono);font-size:13px;font-weight:400}
 
 /* ── Sliders ── */
 .sg{margin-bottom:9px}
-.sg .lbl{display:block;font-size:11px;color:var(--dim);margin-bottom:4px}
+.sg:last-child{margin-bottom:0}
+.sg .lbl{display:block;font-size:10px;font-weight:700;color:var(--dim);
+  letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
 .srow{display:flex;align-items:center;gap:8px}
-input[type=range]{flex:1;-webkit-appearance:none;height:6px;background:var(--sep);
+input[type=range]{flex:1;-webkit-appearance:none;height:5px;background:var(--sep);
   border-radius:3px;outline:none;cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;
-  border-radius:50%;background:var(--accent-h);cursor:pointer;border:1px solid var(--border)}
-.sv{font-size:12px;min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
+  border-radius:50%;background:var(--accent-h);cursor:pointer;border:2px solid var(--bg)}
+#cv-sl::-webkit-slider-thumb{background:var(--amber)}
+.sv{font-family:var(--mono);font-size:13px;min-width:34px;text-align:right;color:var(--amber)}
+
+/* ── Color sensor ── */
+.sensor-row{display:flex;align-items:center;justify-content:center;gap:18px;padding:8px 0}
+.sensor-item{display:flex;flex-direction:column;align-items:center;gap:5px}
+.sensor-item label{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:1.5px}
+.sdot-lg{width:22px;height:22px;border-radius:50%;background:var(--deep);
+  border:2px solid var(--muted);transition:background .15s,box-shadow .15s,border-color .15s}
+.sdot-lg.r.lit{background:#ff3050;border-color:#ff3050;box-shadow:0 0 10px #ff3050,0 0 22px rgba(255,48,80,.3)}
+.sdot-lg.g.lit{background:#20ef70;border-color:#20ef70;box-shadow:0 0 10px #20ef70,0 0 22px rgba(32,239,112,.3)}
+.sdot-lg.b.lit{background:#3090ff;border-color:#3090ff;box-shadow:0 0 10px #3090ff,0 0 22px rgba(48,144,255,.3)}
+.sdot-lg.ir.lit{background:#e890c0;border-color:#e890c0;box-shadow:0 0 10px #e890c0,0 0 22px rgba(232,144,192,.3)}
+.sensor-ctl{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.sensor-ctl select{min-width:60px;font-size:12px;padding:3px 5px}
+.sensor-ctl button{font-size:11px;padding:3px 8px}
 
 /* ── Sequence ── */
 .add-btns{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:7px}
-.add-btns button{font-size:11px;padding:3px 7px}
+.add-btns button{font-size:11px;padding:3px 8px}
 #seq-list{flex:1;overflow-y:auto;min-height:0;border:1px solid var(--sep);
-  border-radius:4px;margin-bottom:5px}
-.seq-row{display:flex;align-items:center;gap:7px;padding:4px 8px;
+  border-radius:3px;margin-bottom:5px}
+.seq-row{display:flex;align-items:center;gap:7px;padding:4px 9px;
   cursor:pointer;min-height:27px;border-bottom:1px solid var(--sep)}
 .seq-row:last-child{border-bottom:none}
 .seq-row:hover{background:rgba(255,255,255,.04)}
-.seq-row.selected{background:rgba(65,125,195,.18)}
-.seq-row.current{background:rgba(48,172,95,.18)}
-.sdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.snum{color:var(--muted);font-size:11px;min-width:20px;font-variant-numeric:tabular-nums}
-.slbl{flex:1;font-size:12px}
-.seq-empty{color:var(--muted);font-size:12px;text-align:center;padding:18px}
+.seq-row.selected{background:rgba(61,127,232,.15)}
+.seq-row.current{background:rgba(31,196,110,.15)}
+.seqdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.snum{color:var(--muted);font-family:var(--mono);font-size:11px;min-width:22px}
+.slbl{flex:1;font-size:12px;font-family:var(--mono)}
+.seq-empty{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 #panel-seq .btn-row{margin-bottom:5px}
 #inp-name{flex:1;min-width:70px}
 
 /* ── Log ── */
-#log-panel{flex-shrink:0;height:170px;background:var(--panel);
-  border-top:1px solid var(--border);padding:5px 12px 6px;
+#log-panel{flex-shrink:0;height:155px;background:var(--deep);
+  border-top:1px solid var(--border);padding:5px 14px 6px;
   display:flex;flex-direction:column;overflow:hidden}
-#log-entries{overflow-y:auto;flex:1;font-size:11px;
-  font-family:'Consolas','Courier New',monospace}
-.le{display:flex;gap:8px;padding:1px 0}
+#log-hdr{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:2px;
+  text-transform:uppercase;margin-bottom:4px}
+#log-entries{overflow-y:auto;flex:1;font-size:11px;font-family:var(--mono)}
+.le{display:flex;gap:10px;padding:1px 0}
 .lts{color:var(--muted);flex-shrink:0}
 .lmsg{color:var(--dim)}
-.le.ERROR .lmsg{color:#d74b4b}
+.le.ERROR .lmsg{color:#d84848}
 .le.WARNING .lmsg{color:var(--warn)}
 
 /* ── Modals ── */
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.72);
   display:flex;align-items:center;justify-content:center;z-index:100}
 .modal.hidden{display:none}
-.mbox{background:var(--panel);border:1px solid var(--border);border-radius:8px;
+.mbox{background:var(--panel);border:1px solid var(--border);border-radius:6px;
   padding:18px;min-width:300px;max-width:460px;width:90%}
-.mtitle{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--text)}
+.mtitle{font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text);letter-spacing:.5px}
 .frow{display:flex;align-items:center;gap:8px;margin-bottom:7px}
-.frow label{color:var(--dim);min-width:170px;font-size:12px}
+.frow label{color:var(--dim);min-width:175px;font-size:12px;font-weight:600}
 .frow input{flex:1}
 #load-list{max-height:240px;overflow-y:auto}
-.li{padding:8px 10px;cursor:pointer;border-radius:4px;color:var(--text);font-size:13px}
+.li{padding:8px 10px;cursor:pointer;border-radius:3px;color:var(--text);
+  font-size:13px;font-family:var(--mono)}
 .li:hover{background:var(--sep)}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--muted);border-radius:2px}
 </style>
 </head>
 <body>
 
-<!-- ── Header ── -->
+<!-- Header -->
 <header>
-  <span class="title">DOBOT CONTROLLER</span>
-  <span class="dot" id="dot"></span>
+  <span class="brand">DOBOT <em>CONTROLLER</em></span>
+  <span class="sdot" id="dot"></span>
   <span id="status-text">DISCONNECTED</span>
   <select id="port-select"><option value="">No ports</option></select>
   <button id="btn-refresh" class="ghost">Refresh</button>
@@ -151,18 +188,19 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   <button id="btn-home" class="ghost">Home</button>
 </header>
 
-<!-- ── Main ── -->
+<!-- Main -->
 <div id="main">
 
-  <!-- Left column -->
+  <!-- Left: Position + Move To + Quick Jog -->
   <div class="col">
+
     <div class="panel">
-      <div class="ph">Current Position</div>
-      <div class="pos-row">
-        <div class="pv"><span class="pl">X</span><span id="px">0.00</span></div>
-        <div class="pv"><span class="pl">Y</span><span id="py">0.00</span></div>
-        <div class="pv"><span class="pl">Z</span><span id="pz">0.00</span></div>
-        <div class="pv"><span class="pl">R</span><span id="pr">0.00</span></div>
+      <div class="ph">Position</div>
+      <div class="pos-grid">
+        <div class="pos-cell"><span class="pos-lbl">X</span><span class="pos-val" id="px">0.00</span></div>
+        <div class="pos-cell"><span class="pos-lbl">Y</span><span class="pos-val" id="py">0.00</span></div>
+        <div class="pos-cell"><span class="pos-lbl">Z</span><span class="pos-val" id="pz">0.00</span></div>
+        <div class="pos-cell"><span class="pos-lbl">R</span><span class="pos-val" id="pr">0.00</span></div>
       </div>
     </div>
 
@@ -183,13 +221,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
     </div>
 
     <div class="panel">
-      <div class="ph">Quick Jog</div>
+      <div class="ph">Quick Jog
+        <span style="font-size:9px;font-weight:500;letter-spacing:.5px">ARROW KEYS / PGUP / PGDN</span>
+      </div>
       <div class="step-row">
-        <span style="color:var(--dim);font-size:11px">Step&nbsp;(mm):</span>
+        <span class="step-lbl">STEP:</span>
         <button class="step-btn" data-step="5">5</button>
         <button class="step-btn" data-step="10">10</button>
         <button class="step-btn active" data-step="20">20</button>
         <button class="step-btn" data-step="50">50</button>
+        <span class="step-lbl" style="margin-left:2px">mm</span>
       </div>
       <div class="jog-grid">
         <button data-axis="x" data-sign="-1">X &minus;</button>
@@ -200,21 +241,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
         <button data-axis="z" data-sign="1">Z +</button>
       </div>
     </div>
+
   </div>
 
-  <!-- Center column -->
+  <!-- Center: Z/Speed + Vacuum + Conveyor + Color Sensor -->
   <div class="col">
-    <div class="panel">
-      <div class="ph">XY Jog &nbsp;<span style="font-size:10px;font-style:italic">(arrow keys)</span></div>
-      <div style="display:flex;justify-content:center">
-        <canvas id="joy" width="214" height="214"></canvas>
-      </div>
-    </div>
 
     <div class="panel">
       <div class="ph">Z Jog &amp; Speed</div>
       <div class="sg">
-        <span class="lbl">Z Jog &nbsp;(PgUp / PgDn)</span>
+        <span class="lbl">Z Velocity</span>
         <div class="srow">
           <input type="range" id="z-sl" min="-100" max="100" value="0">
           <span class="sv" id="z-sv">0</span>
@@ -243,30 +279,69 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
         </div>
       </div>
       <div class="btn-row">
-        <button id="btn-cdir" class="ghost">Forward</button>
-        <button id="btn-crun" class="success">Start</button>
+        <button id="btn-cdir"   class="ghost">Forward</button>
+        <button id="btn-crun"   class="success">Start</button>
         <button id="btn-ciface" class="ghost">Iface: 0</button>
       </div>
     </div>
+
+    <div class="panel">
+      <div class="ph">Color Sensor</div>
+      <div class="sensor-row">
+        <div class="sensor-item">
+          <div class="sdot-lg r" id="dot-r"></div>
+          <label>RED</label>
+        </div>
+        <div class="sensor-item">
+          <div class="sdot-lg g" id="dot-g"></div>
+          <label>GRN</label>
+        </div>
+        <div class="sensor-item">
+          <div class="sdot-lg b" id="dot-b"></div>
+          <label>BLU</label>
+        </div>
+        <div class="sensor-item">
+          <div class="sdot-lg ir" id="dot-ir"></div>
+          <label>IR</label>
+        </div>
+      </div>
+      <div class="sensor-ctl">
+        <select id="color-port" title="Color sensor port">
+          <option value="GP1">GP1</option>
+          <option value="GP2" selected>GP2</option>
+          <option value="GP4">GP4</option>
+          <option value="GP5">GP5</option>
+        </select>
+        <select id="ir-port" title="IR sensor port">
+          <option value="GP1">GP1</option>
+          <option value="GP2">GP2</option>
+          <option value="GP4" selected>GP4</option>
+          <option value="GP5">GP5</option>
+        </select>
+        <button id="btn-read-sensor" class="ghost">Read</button>
+        <button id="btn-autopoll"    class="ghost">Auto: OFF</button>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Sequence column -->
+  <!-- Right: Sequence Editor -->
   <div id="col-seq">
     <div class="panel" id="panel-seq">
       <div class="ph">
         <span>Sequence Editor</span>
-        <span id="seq-cnt" style="color:var(--muted);font-size:11px"></span>
+        <span id="seq-cnt" style="color:var(--muted);font-size:11px;font-family:var(--mono)"></span>
       </div>
       <div class="add-btns">
-        <button class="ghost add" data-type="move_to">+ Position</button>
-        <button class="ghost add" data-type="move_rel">+ Relative</button>
+        <button class="ghost add" data-type="move_to">+ Pos</button>
+        <button class="ghost add" data-type="move_rel">+ Rel</button>
         <button class="ghost add" data-type="suction">+ Suction</button>
         <button class="ghost add" data-type="gripper">+ Gripper</button>
         <button class="ghost add" data-type="wait">+ Wait</button>
         <button class="ghost add" data-type="home">+ Home</button>
         <button class="ghost add" data-type="speed">+ Speed</button>
         <button class="ghost add" data-type="set_io">+ IO</button>
-        <button class="ghost add" data-type="conveyor_belt">+ Conveyor</button>
+        <button class="ghost add" data-type="conveyor_belt">+ Conv</button>
         <button class="ghost add" data-type="conveyor_belt_distance">+ Conv Dist</button>
       </div>
       <div id="seq-list"></div>
@@ -274,7 +349,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
         <button id="btn-del" class="danger">Delete</button>
         <button id="btn-up"  class="ghost">Up</button>
         <button id="btn-dn"  class="ghost">Down</button>
-        <button id="btn-dup" class="ghost">Duplicate</button>
+        <button id="btn-dup" class="ghost">Dup</button>
       </div>
       <div class="btn-row">
         <button id="btn-play" class="success">Play</button>
@@ -291,25 +366,25 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   </div>
 </div>
 
-<!-- ── Log ── -->
+<!-- Log -->
 <div id="log-panel">
-  <div class="ph" style="margin-bottom:4px">Log</div>
+  <div id="log-hdr">LOG</div>
   <div id="log-entries"></div>
 </div>
 
-<!-- ── Edit modal ── -->
+<!-- Edit modal -->
 <div id="edit-modal" class="modal hidden">
   <div class="mbox">
     <div class="mtitle" id="m-title">Edit Step</div>
     <div id="m-fields"></div>
-    <div class="btn-row" style="margin-top:12px">
+    <div class="btn-row" style="margin-top:14px">
       <button id="m-apply">Apply</button>
       <button id="m-cancel" class="ghost">Cancel</button>
     </div>
   </div>
 </div>
 
-<!-- ── Load picker ── -->
+<!-- Load picker -->
 <div id="load-modal" class="modal hidden">
   <div class="mbox">
     <div class="mtitle">Load Sequence</div>
@@ -332,6 +407,9 @@ const S = {
   steps:[], selected:-1, jogStep:20,
 };
 
+const $   = id => document.getElementById(id);
+const esc = s  => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
 // ── API ───────────────────────────────────────────────────────────────────────
 async function post(url, data){
   const r = await fetch(url,{method:'POST',
@@ -349,20 +427,20 @@ async function put(url,data){
 
 // ── SSE ───────────────────────────────────────────────────────────────────────
 function startSse(){
-  const es = new EventSource('/events');
-  es.onmessage = e => handle(JSON.parse(e.data));
-  es.onerror = () => setStatus(false,false);
+  const es=new EventSource('/events');
+  es.onmessage=e=>handle(JSON.parse(e.data));
+  es.onerror=()=>setStatus(false,false);
 }
 
 function handle(d){
   switch(d.type){
-    case 'state':    applyState(d);   break;
-    case 'pos':      applyPos(d);     break;
-    case 'log':      addLog(d);       break;
-    case 'steps':    renderSteps(d.steps); break;
-    case 'seq_state':applySeqState(d);break;
-    case 'vacuum':   setVacuum(d.on); break;
-    case 'conveyor': applyConveyor(d);break;
+    case 'state':    applyState(d);       break;
+    case 'pos':      applyPos(d);         break;
+    case 'log':      addLog(d);           break;
+    case 'steps':    renderSteps(d.steps);break;
+    case 'seq_state':applySeqState(d);    break;
+    case 'vacuum':   setVacuum(d.on);     break;
+    case 'conveyor': applyConveyor(d);    break;
     case 'ports':    setPorts(d.ports,d.index); break;
   }
 }
@@ -392,16 +470,16 @@ function applyPos(p){
   $('pr').textContent=S.pos.R.toFixed(2);
 }
 
-function setStatus(conn,conn2){
-  const dot=$('dot'), txt=$('status-text'), btn=$('btn-connect');
-  if(conn2){
-    dot.className='dot warn'; txt.textContent='CONNECTING…';
+function setStatus(conn,busy){
+  const dot=$('dot'),txt=$('status-text'),btn=$('btn-connect');
+  if(busy){
+    dot.className='sdot warn'; txt.textContent='CONNECTING';
     btn.textContent='Connecting…'; btn.disabled=true;
   } else if(conn){
-    dot.className='dot ok'; txt.textContent='CONNECTED';
+    dot.className='sdot ok'; txt.textContent='CONNECTED';
     btn.textContent='Disconnect'; btn.className='danger'; btn.disabled=false;
   } else {
-    dot.className='dot'; txt.textContent='DISCONNECTED';
+    dot.className='sdot'; txt.textContent='DISCONNECTED';
     btn.textContent='Connect'; btn.className=''; btn.disabled=false;
   }
 }
@@ -426,26 +504,24 @@ function applyConveyor(d){
   updateConvBtns();
 }
 function updateConvBtns(){
-  const r=$('btn-crun'),dir=$('btn-cdir'),iface=$('btn-ciface');
-  r.textContent=S.convRunning?'Stop':'Start';
-  r.className=S.convRunning?'danger':'success';
-  dir.textContent=S.convDir>0?'Forward':'Reverse';
-  iface.textContent=`Iface: ${S.convIface}`;
+  $('btn-crun').textContent=S.convRunning?'Stop':'Start';
+  $('btn-crun').className=S.convRunning?'danger':'success';
+  $('btn-cdir').textContent=S.convDir>0?'Forward':'Reverse';
+  $('btn-ciface').textContent=`Iface: ${S.convIface}`;
 }
 
 function applySeqState(d){
-  S.playing = d.seq_playing ?? d.playing ?? S.playing;
-  S.paused  = d.seq_paused  ?? d.paused  ?? S.paused;
-  S.looping = d.seq_looping ?? d.looping ?? S.looping;
-  S.current = d.seq_current ?? d.current ?? S.current;
+  S.playing=d.seq_playing??d.playing??S.playing;
+  S.paused =d.seq_paused ??d.paused ??S.paused;
+  S.looping=d.seq_looping??d.looping??S.looping;
+  S.current=d.seq_current??d.current??S.current;
   const p=$('btn-play');
-  if(S.playing && !S.paused){ p.textContent='Pause'; p.className=''; }
-  else if(S.playing && S.paused){ p.textContent='Resume'; p.className='success'; }
-  else { p.textContent='Play'; p.className='success'; }
-  const l=$('btn-loop');
-  l.textContent=`Loop: ${S.looping?'ON':'OFF'}`;
-  l.className=S.looping?'success':'ghost';
-  renderSteps(null);  // refresh highlights
+  if(S.playing&&!S.paused){p.textContent='Pause'; p.className='';}
+  else if(S.playing&&S.paused){p.textContent='Resume'; p.className='success';}
+  else {p.textContent='Play'; p.className='success';}
+  $('btn-loop').textContent=`Loop: ${S.looping?'ON':'OFF'}`;
+  $('btn-loop').className=S.looping?'success':'ghost';
+  renderSteps(null);
 }
 
 // ── Log ───────────────────────────────────────────────────────────────────────
@@ -458,16 +534,16 @@ function addLog(e){
   while(el.children.length>300) el.removeChild(el.firstChild);
   el.scrollTop=el.scrollHeight;
 }
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
 // ── Step list ─────────────────────────────────────────────────────────────────
 const COLORS={
-  move_to:'#417dc3',move_rel:'#5591d7',
-  suction:'#30ac5f',gripper:'#41c070',
-  wait:'#cd9e34',home:'#8c8c9e',
-  speed:'#5587be',set_io:'#d74b4b',
-  conveyor_belt:'#cd8034',conveyor_belt_distance:'#d76428',
+  move_to:'#3d7fe8',move_rel:'#5a9af0',
+  suction:'#1fc46e',gripper:'#28d47e',
+  wait:'#c89c20',home:'#6060a0',
+  speed:'#4a85c8',set_io:'#c83848',
+  conveyor_belt:'#c87820',conveyor_belt_distance:'#d06020',
 };
+
 function slabel(s){
   const t=s.type,p=s.params;
   if(t==='move_to')  return `Move To (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, ${p.r.toFixed(1)})`;
@@ -503,7 +579,7 @@ function renderSteps(steps){
     const cls=i===S.current?'current':i===S.selected?'selected':'';
     return `<div class="seq-row ${cls}" data-i="${i}">
       <span class="snum">${String(i+1).padStart(2,'0')}</span>
-      <span class="sdot" style="background:${col}"></span>
+      <span class="seqdot" style="background:${col}"></span>
       <span class="slbl">${esc(slabel(s))}</span>
     </div>`;
   }).join('');
@@ -511,7 +587,7 @@ function renderSteps(steps){
     const idx=parseInt(row.dataset.i);
     row.addEventListener('click',()=>{
       if(idx===S.selected) openEdit(idx);
-      else{ S.selected=idx; renderSteps(null); }
+      else{S.selected=idx; renderSteps(null);}
     });
     row.addEventListener('dblclick',()=>openEdit(idx));
   });
@@ -529,8 +605,8 @@ function defStep(type){
     home:     {},
     speed:    {velocity:100,acceleration:100},
     set_io:   {address:1,state:true},
-    conveyor_belt:          {speed:0.5,direction:S.convDir,interface:S.convIface,duration:2.0},
-    conveyor_belt_distance: {speed:50,distance:100,direction:S.convDir,interface:S.convIface},
+    conveyor_belt:         {speed:0.5,direction:S.convDir,interface:S.convIface,duration:2.0},
+    conveyor_belt_distance:{speed:50,distance:100,direction:S.convDir,interface:S.convIface},
   };
   const params=map[type]??{};
   if(type==='suction'||type==='gripper'){
@@ -552,22 +628,22 @@ async function addStep(type){
 const FIELDS={
   move_to:  [{k:'x',l:'X'},{k:'y',l:'Y'},{k:'z',l:'Z'},{k:'r',l:'R'}],
   move_rel: [{k:'x',l:'X'},{k:'y',l:'Y'},{k:'z',l:'Z'},{k:'r',l:'R'}],
-  suction:  [{k:'on',l:'ON (1 = on, 0 = off)'}],
-  gripper:  [{k:'on',l:'ON (1 = on, 0 = off)'}],
+  suction:  [{k:'on',l:'ON (1=on, 0=off)'}],
+  gripper:  [{k:'on',l:'ON (1=on, 0=off)'}],
   wait:     [{k:'seconds',l:'Seconds'}],
   home:     [],
-  speed:    [{k:'velocity',l:'Velocity (mm/s)'},{k:'acceleration',l:'Acceleration (mm/s²)'}],
-  set_io:   [{k:'address',l:'Pin (1–22)'},{k:'state',l:'State (1 = on, 0 = off)'}],
+  speed:    [{k:'velocity',l:'Velocity (mm/s)'},{k:'acceleration',l:'Accel (mm/s²)'}],
+  set_io:   [{k:'address',l:'Pin (1–22)'},{k:'state',l:'State (1=on, 0=off)'}],
   conveyor_belt:[
-    {k:'speed',l:'Speed (0.0 – 1.0)'},
-    {k:'direction',l:'Direction (1 = fwd, −1 = rev)'},
+    {k:'speed',l:'Speed (0.0–1.0)'},
+    {k:'direction',l:'Direction (1=fwd, −1=rev)'},
     {k:'interface',l:'Interface (0 or 1)'},
-    {k:'duration',l:'Duration sec (0 = continuous)'},
+    {k:'duration',l:'Duration sec (0=continuous)'},
   ],
   conveyor_belt_distance:[
-    {k:'speed',l:'Speed (mm/s, 0 – 100)'},
+    {k:'speed',l:'Speed (mm/s, 0–100)'},
     {k:'distance',l:'Distance (mm)'},
-    {k:'direction',l:'Direction (1 = fwd, −1 = rev)'},
+    {k:'direction',l:'Direction (1=fwd, −1=rev)'},
     {k:'interface',l:'Interface (0 or 1)'},
   ],
 };
@@ -598,8 +674,7 @@ async function applyEdit(){
   if(editIdx<0||editIdx>=S.steps.length){closeEdit();return}
   const step=JSON.parse(JSON.stringify(S.steps[editIdx]));
   document.querySelectorAll('#m-fields input').forEach(inp=>{
-    const k=inp.dataset.k, cur=step.params[k];
-    const v=inp.value;
+    const k=inp.dataset.k,cur=step.params[k],v=inp.value;
     if(typeof cur==='boolean') step.params[k]=v!=='0'&&v.toLowerCase()!=='false';
     else if(typeof cur==='number'&&Number.isInteger(cur)) step.params[k]=Math.round(parseFloat(v));
     else step.params[k]=parseFloat(v);
@@ -628,143 +703,78 @@ async function openLoad(){
   $('load-modal').classList.remove('hidden');
 }
 
-// ── Joystick ──────────────────────────────────────────────────────────────────
-const joy=(()=>{
-  let cv,ctx,cx,cy,R;
-  let vx=0,vy=0,active=false;
-  let kx=0,ky=0;   // keyboard-driven velocity
+// ── Color sensor ──────────────────────────────────────────────────────────────
+let autoPoll=false, pollTimer=null;
 
-  function init(){
-    cv=document.getElementById('joy');
-    ctx=cv.getContext('2d');
-    cx=cv.width/2; cy=cv.height/2;
-    R=Math.min(cx,cy)-8;
+function setColorDots(r,g,b){
+  $('dot-r').classList.toggle('lit',!!r);
+  $('dot-g').classList.toggle('lit',!!g);
+  $('dot-b').classList.toggle('lit',!!b);
+}
+function setIrDot(det){ $('dot-ir').classList.toggle('lit',!!det) }
 
-    const xy=e=>{
-      const r=cv.getBoundingClientRect();
-      const src=e.touches?e.touches[0]:e;
-      return [src.clientX-r.left, src.clientY-r.top];
-    };
-    const tryStart=([mx,my])=>{if(Math.hypot(mx-cx,my-cy)<=R) active=true};
-    const onMove=([mx,my])=>{
-      if(!active) return;
-      let dx=mx-cx,dy=my-cy,d=Math.hypot(dx,dy),m=R-16;
-      if(d>m){const s=m/d;dx*=s;dy*=s}
-      vx=dx/m; vy=dy/m;
-    };
-    const onEnd=()=>{active=false;vx=0;vy=0};
-
-    cv.addEventListener('mousedown',e=>tryStart(xy(e)));
-    cv.addEventListener('mousemove',e=>onMove(xy(e)));
-    cv.addEventListener('mouseup',onEnd);
-    cv.addEventListener('mouseleave',onEnd);
-    cv.addEventListener('touchstart',e=>{e.preventDefault();tryStart(xy(e))},{passive:false});
-    cv.addEventListener('touchmove',e=>{e.preventDefault();onMove(xy(e))},{passive:false});
-    cv.addEventListener('touchend',onEnd);
-  }
-
-  function draw(){
-    ctx.clearRect(0,0,cv.width,cv.height);
-    // Base
-    ctx.fillStyle='#1a1a24';
-    ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#343446';ctx.lineWidth=1;
-    ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();
-    // Guide rings
-    for(const rr of[R*.5,R*.85]){
-      ctx.strokeStyle='#2e2e42';
-      ctx.beginPath();ctx.arc(cx,cy,rr,0,Math.PI*2);ctx.stroke();
-    }
-    // Crosshair
-    ctx.strokeStyle='#2e2e42';
-    ctx.beginPath();ctx.moveTo(cx,cy-R+8);ctx.lineTo(cx,cy+R-8);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(cx-R+8,cy);ctx.lineTo(cx+R-8,cy);ctx.stroke();
-    // Axis labels
-    ctx.fillStyle='#525264';ctx.font='11px sans-serif';ctx.textAlign='center';
-    ctx.fillText('X+',cx+R+14,cy+4);ctx.fillText('X−',cx-R-14,cy+4);
-    ctx.fillText('Y+',cx,cy-R-6);ctx.fillText('Y−',cx,cy+R+14);
-    // Thumb
-    const ex=active?vx:kx, ey=active?vy:ky;
-    const sx=cx+ex*(R-16), sy=cy+ey*(R-16);
-    const moving=active||kx!==0||ky!==0;
-    ctx.fillStyle=moving?'#6ca0d7':'#5587be';
-    ctx.beginPath();ctx.arc(sx,sy,14,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#a0a0b4';ctx.lineWidth=1;
-    ctx.beginPath();ctx.arc(sx,sy,14,0,Math.PI*2);ctx.stroke();
-  }
-
-  return{
-    init,draw,
-    getVx:()=>active?vx:kx,
-    getVy:()=>active?vy:ky,
-    setKb:(x,y)=>{kx=x;ky=y},
-  };
-})();
-
-// ── Jog RAF loop ──────────────────────────────────────────────────────────────
-let jogBusy=false, lastJogTs=0;
-const JOG_MS=33;  // 30 fps max
-
-function raf(ts){
-  joy.draw();
-  if(!jogBusy && S.connected && ts-lastJogTs>=JOG_MS){
-    const vx=joy.getVx(), vy=joy.getVy();
-    const vz=parseFloat($('z-sl').value)/100;
-    const speed=parseFloat($('sp-sl').value);
-    jogBusy=true; lastJogTs=ts;
-    fetch('/api/jog',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({vx,vy,vz,speed})
-    }).then(()=>{jogBusy=false}).catch(()=>{jogBusy=false});
-  }
-  requestAnimationFrame(raf);
+async function readSensors(){
+  if(!S.connected) return;
+  try{
+    const d=await post('/api/color_sensor',{port:$('color-port').value});
+    if(d&&!d.error) setColorDots(d.r,d.g,d.b);
+    const di=await post('/api/ir_sensor',{port:$('ir-port').value});
+    if(di&&!di.error) setIrDot(di.detected);
+  } catch(_){}
 }
 
-// ── Keyboard ──────────────────────────────────────────────────────────────────
+function toggleAutoPoll(){
+  autoPoll=!autoPoll;
+  $('btn-autopoll').textContent=`Auto: ${autoPoll?'ON':'OFF'}`;
+  $('btn-autopoll').className=autoPoll?'success':'ghost';
+  if(autoPoll){ readSensors(); pollTimer=setInterval(readSensors,500); }
+  else{ clearInterval(pollTimer); pollTimer=null; }
+}
+
+// ── Keyboard jog ──────────────────────────────────────────────────────────────
 const keys=new Set();
+let kbVx=0, kbVy=0;
 const KSTEP=0.06;
-let kbVx=0,kbVy=0;
 const noInput=()=>!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
 
 document.addEventListener('keydown',e=>{
-  if(noInput()&&['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','PageUp','PageDown']
-    .includes(e.code)) e.preventDefault();
+  if(noInput()&&['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','PageUp','PageDown'].includes(e.code))
+    e.preventDefault();
   keys.add(e.code);
 });
-document.addEventListener('keyup',e=>{
-  keys.delete(e.code);
-  if(!keys.has('PageUp')&&!keys.has('PageDown')){
-    if(e.code==='PageUp'||e.code==='PageDown'){
-      $('z-sl').value=0; $('z-sv').textContent='0';
-    }
-  }
-});
+document.addEventListener('keyup',e=>keys.delete(e.code));
 
-// Poll keyboard at 60fps for smooth ramping
 setInterval(()=>{
-  if(!noInput()){kbVx=0;kbVy=0;joy.setKb(0,0);return}
-  kbVx = keys.has('ArrowRight') ? Math.min(1,kbVx+KSTEP)
-       : keys.has('ArrowLeft')  ? Math.max(-1,kbVx-KSTEP)
-       : 0;
-  kbVy = keys.has('ArrowDown')  ? Math.min(1,kbVy+KSTEP)
-       : keys.has('ArrowUp')    ? Math.max(-1,kbVy-KSTEP)
-       : 0;
-  joy.setKb(kbVx,kbVy);
+  if(!noInput()){kbVx=0;kbVy=0;return}
+  kbVx=keys.has('ArrowRight')?Math.min(1,kbVx+KSTEP):keys.has('ArrowLeft')?Math.max(-1,kbVx-KSTEP):0;
+  kbVy=keys.has('ArrowDown') ?Math.min(1,kbVy+KSTEP):keys.has('ArrowUp')  ?Math.max(-1,kbVy-KSTEP):0;
   const zsl=$('z-sl');
-  if(keys.has('PageUp'))  {zsl.value=Math.min(100,+zsl.value+4);$('z-sv').textContent=zsl.value}
-  if(keys.has('PageDown')){zsl.value=Math.max(-100,+zsl.value-4);$('z-sv').textContent=zsl.value}
+  if(keys.has('PageUp'))  {zsl.value=Math.min(100,+zsl.value+4);  $('z-sv').textContent=zsl.value}
+  if(keys.has('PageDown')){zsl.value=Math.max(-100,+zsl.value-4); $('z-sv').textContent=zsl.value}
 },16);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const $=id=>document.getElementById(id);
+// ── Jog loop at 30 fps ────────────────────────────────────────────────────────
+let jogBusy=false, lastJogAllZero=true;
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+setInterval(()=>{
+  if(!S.connected||jogBusy) return;
+  const vx=kbVx, vy=kbVy;
+  const vz=parseFloat($('z-sl').value)/100;
+  const speed=parseFloat($('sp-sl').value);
+  const allZero=vx===0&&vy===0&&vz===0;
+  if(allZero&&lastJogAllZero) return;
+  lastJogAllZero=allZero;
+  jogBusy=true;
+  fetch('/api/jog',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({vx,vy,vz,speed})
+  }).then(()=>{jogBusy=false}).catch(()=>{jogBusy=false});
+},33);
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
-  joy.init();
   startSse();
-  requestAnimationFrame(raf);
 
-  // Header
   $('btn-refresh').onclick=()=>post('/api/refresh');
   $('btn-connect').onclick=()=>{
     if(S.connected) post('/api/disconnect');
@@ -775,17 +785,15 @@ document.addEventListener('DOMContentLoaded',()=>{
   };
   $('btn-home').onclick=()=>post('/api/home');
 
-  // Move To
   $('btn-curr').onclick=()=>{
     $('ix').value=S.pos.X.toFixed(2); $('iy').value=S.pos.Y.toFixed(2);
     $('iz').value=S.pos.Z.toFixed(2); $('ir').value=S.pos.R.toFixed(2);
   };
   $('btn-move').onclick=()=>post('/api/move_to',{
-    x:parseFloat($('ix').value), y:parseFloat($('iy').value),
-    z:parseFloat($('iz').value), r:parseFloat($('ir').value)
+    x:parseFloat($('ix').value),y:parseFloat($('iy').value),
+    z:parseFloat($('iz').value),r:parseFloat($('ir').value)
   });
 
-  // Step size
   document.querySelectorAll('.step-btn').forEach(b=>{
     b.onclick=()=>{
       S.jogStep=parseFloat(b.dataset.step);
@@ -793,23 +801,21 @@ document.addEventListener('DOMContentLoaded',()=>{
     };
   });
 
-  // Jog buttons
   document.querySelectorAll('[data-axis]').forEach(b=>{
     b.onclick=()=>post('/api/jog_step',{axis:b.dataset.axis,sign:+b.dataset.sign,step:S.jogStep});
   });
 
-  // Z slider
   $('z-sl').oninput=()=>$('z-sv').textContent=$('z-sl').value;
-  $('z-sl').onmouseup=$('z-sl').ontouchend=()=>{$('z-sl').value=0;$('z-sv').textContent='0'};
+  $('z-sl').onmouseup=$('z-sl').ontouchend=()=>{
+    $('z-sl').value=0; $('z-sv').textContent='0';
+    lastJogAllZero=false; // force one final stop send
+  };
 
-  // Speed slider
   $('sp-sl').oninput=()=>$('sp-sv').textContent=$('sp-sl').value;
 
-  // Vacuum & alarms
   $('btn-vac').onclick=()=>post('/api/vacuum');
   $('btn-alm').onclick=()=>post('/api/clear_alarms');
 
-  // Conveyor
   $('cv-sl').oninput=()=>$('cv-sv').textContent=$('cv-sl').value;
   $('btn-cdir').onclick=()=>{
     S.convDir=-S.convDir;
@@ -825,14 +831,15 @@ document.addEventListener('DOMContentLoaded',()=>{
     $('btn-ciface').textContent=`Iface: ${S.convIface}`;
   };
   function sendConv(){
-    const speed=parseInt($('cv-sl').value)/100;
-    post('/api/conveyor',{speed,direction:S.convDir,interface:S.convIface});
+    post('/api/conveyor',{speed:parseInt($('cv-sl').value)/100,
+      direction:S.convDir,interface:S.convIface});
   }
 
-  // Sequence add
+  $('btn-read-sensor').onclick=readSensors;
+  $('btn-autopoll').onclick=toggleAutoPoll;
+
   document.querySelectorAll('.add').forEach(b=>b.onclick=()=>addStep(b.dataset.type));
 
-  // Sequence edit/reorder
   $('btn-del').onclick=()=>{
     if(S.selected<0) return;
     del(`/api/sequence/${S.selected}`);
@@ -848,7 +855,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(S.selected>=0){post(`/api/sequence/${S.selected}/dup`);S.selected++}
   };
 
-  // Playback
   $('btn-play').onclick=()=>post(S.playing?'/api/sequence/pause':'/api/sequence/play');
   $('btn-stop').onclick=()=>post('/api/sequence/stop');
   $('btn-loop').onclick=async()=>{
@@ -858,12 +864,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     $('btn-loop').className=S.looping?'success':'ghost';
   };
 
-  // Save / Load / Clear
   $('btn-save').onclick=()=>post('/api/sequence/save',{name:$('inp-name').value.trim()||'untitled'});
   $('btn-load').onclick=openLoad;
   $('btn-clr').onclick=()=>{post('/api/sequence/clear');S.selected=-1};
 
-  // Edit modal
   $('m-apply').onclick=applyEdit;
   $('m-cancel').onclick=closeEdit;
   $('edit-modal').onclick=e=>{if(e.target===$('edit-modal'))closeEdit()};
@@ -872,7 +876,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(e.key==='Escape') closeEdit();
   });
 
-  // Load modal
   $('lm-cancel').onclick=()=>$('load-modal').classList.add('hidden');
   $('load-modal').onclick=e=>{if(e.target===$('load-modal'))$('load-modal').classList.add('hidden')};
 });
