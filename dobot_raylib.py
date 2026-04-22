@@ -48,7 +48,7 @@ COL_RX    = PAD + COL_W + PAD        # 474
 COL_RW    = 298                       # narrowed for sequence panel
 SEQ_X     = COL_RX + COL_RW + PAD    # 784
 SEQ_W     = W - SEQ_X - PAD          # 484
-LOG_Y     = 548
+LOG_Y     = 650
 LOG_H     = H - LOG_Y - PAD
 ROUND     = 0.12
 FSM       = 13
@@ -58,7 +58,7 @@ BTN_H     = 30
 INP_H     = 28
 
 # Sequence list geometry
-SEQ_LIST_Y  = 196
+SEQ_LIST_Y  = 226
 SEQ_LIST_H  = 248
 SEQ_ROW_H   = 28
 SEQ_MAX_VIS = SEQ_LIST_H // SEQ_ROW_H  # 8
@@ -71,6 +71,7 @@ SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequen
 STEP_TYPES = [
     "move_to", "move_rel", "suction", "gripper",
     "wait", "home", "speed", "set_io",
+    "conveyor_belt", "conveyor_belt_distance",
 ]
 
 STEP_TYPE_COLORS = {
@@ -78,6 +79,8 @@ STEP_TYPE_COLORS = {
     "suction": C_SUCCESS, "gripper": C_SUCCESS_H,
     "wait": C_WARN, "home": C_DIM,
     "speed": C_THUMB, "set_io": C_ERR,
+    "conveyor_belt": Color(205, 128, 52, 255),
+    "conveyor_belt_distance": Color(215, 100, 40, 255),
 }
 
 
@@ -91,6 +94,13 @@ def step_label(step: dict) -> str:
     if t == "home":      return "Home"
     if t == "speed":     return f"Speed {p['velocity']:.0f} mm/s"
     if t == "set_io":    return f"IO #{p['address']} {'ON' if p['state'] else 'OFF'}"
+    if t == "conveyor_belt":
+        d = "FWD" if p["direction"] > 0 else "REV"
+        dur = f" {p['duration']:.1f}s" if p["duration"] > 0 else " cont."
+        return f"Belt {int(p['speed']*100)}% {d}{dur}"
+    if t == "conveyor_belt_distance":
+        d = "FWD" if p["direction"] > 0 else "REV"
+        return f"Belt {p['distance']:.0f}mm@{p['speed']:.0f}mm/s {d}"
     return t
 
 
@@ -317,7 +327,10 @@ class DobotController:
         self.log_handler.setFormatter(logging.Formatter("%(message)s"))
         self.logger.addHandler(self.log_handler)
 
-        self.vacuum_on = False
+        self.vacuum_on      = False
+        self.conv_running   = False
+        self.conv_direction = 1
+        self.conv_interface = 0
         self.jog_step  = 20.0
         self.last_jog  = (0.0, 0.0, 0.0)
         self._kb_vx    = 0.0
@@ -409,28 +422,39 @@ class DobotController:
         self.btn_add_spd  = Button(sx+8+(bw4+6),     162, bw4, 26, "+ Speed",    Button.GHOST)
         self.btn_add_io   = Button(sx+8+2*(bw4+6),   162, bw4, 26, "+ IO",       Button.GHOST)
         self.btn_add_rel  = Button(sx+8+3*(bw4+6),   162, bw4, 26, "+ Relative", Button.GHOST)
+        # Record buttons row 3 (y=192) — conveyor
+        bw2 = (inner - 6) // 2
+        self.btn_add_conv  = Button(sx+8,          192, bw2, 26, "+ Conveyor",  Button.GHOST)
+        self.btn_add_convd = Button(sx+8+(bw2+6),  192, bw2, 26, "+ Conv Dist", Button.GHOST)
         self.seq_add_btns = [
             self.btn_add_pos, self.btn_add_suck, self.btn_add_grip, self.btn_add_wait,
             self.btn_add_home, self.btn_add_spd, self.btn_add_io, self.btn_add_rel,
+            self.btn_add_conv, self.btn_add_convd,
         ]
 
-        # Edit/reorder bar (y=448)
-        self.btn_del_step = Button(sx+8,           448, bw4, 26, "Delete",  Button.DANGER)
-        self.btn_move_up  = Button(sx+8+(bw4+6),   448, bw4, 26, "Up",      Button.GHOST)
-        self.btn_move_dn  = Button(sx+8+2*(bw4+6), 448, bw4, 26, "Down",    Button.GHOST)
-        self.btn_dup_step = Button(sx+8+3*(bw4+6), 448, bw4, 26, "Duplicate", Button.GHOST)
+        # Edit/reorder bar (y=478)
+        self.btn_del_step = Button(sx+8,           478, bw4, 26, "Delete",    Button.DANGER)
+        self.btn_move_up  = Button(sx+8+(bw4+6),   478, bw4, 26, "Up",        Button.GHOST)
+        self.btn_move_dn  = Button(sx+8+2*(bw4+6), 478, bw4, 26, "Down",      Button.GHOST)
+        self.btn_dup_step = Button(sx+8+3*(bw4+6), 478, bw4, 26, "Duplicate", Button.GHOST)
 
-        # Playback controls (y=478)
-        self.btn_seq_play = Button(sx+8,       478, 152, BTN_H, "Play", Button.SUCCESS)
-        self.btn_seq_stop = Button(sx+8+158,   478, 100, BTN_H, "Stop", Button.DANGER)
-        self.btn_seq_loop = Button(sx+8+264,   478, inner-264, BTN_H, "Loop: OFF", Button.GHOST)
+        # Playback controls (y=508)
+        self.btn_seq_play = Button(sx+8,       508, 152, BTN_H, "Play", Button.SUCCESS)
+        self.btn_seq_stop = Button(sx+8+158,   508, 100, BTN_H, "Stop", Button.DANGER)
+        self.btn_seq_loop = Button(sx+8+264,   508, inner-264, BTN_H, "Loop: OFF", Button.GHOST)
 
-        # Save/Load bar (y=512)
-        self.btn_seq_save  = Button(sx+8,       512, 72, 26, "Save",  Button.GHOST)
-        self.btn_seq_load  = Button(sx+8+78,    512, 72, 26, "Load",  Button.GHOST)
-        self.btn_seq_clear = Button(sx+8+156,   512, 72, 26, "Clear", Button.DANGER)
-        self.inp_seq_name  = InputField(sx+8+234, 513, inner-234, "untitled")
+        # Save/Load bar (y=542)
+        self.btn_seq_save  = Button(sx+8,       542, 72, 26, "Save",  Button.GHOST)
+        self.btn_seq_load  = Button(sx+8+78,    542, 72, 26, "Load",  Button.GHOST)
+        self.btn_seq_clear = Button(sx+8+156,   542, 72, 26, "Clear", Button.DANGER)
+        self.inp_seq_name  = InputField(sx+8+234, 543, inner-234, "untitled")
         self.inp_seq_name.max_len = 30
+
+        # ── Conveyor panel (right col, below Z/Speed) ─────────────────────────
+        self.conv_speed_slider = Slider(rx + 12, 583, cw, 0, 100, 50)
+        self.btn_conv_dir   = Button(rx + 12,  614,  84, BTN_H, "Forward",  Button.GHOST)
+        self.btn_conv_run   = Button(rx + 102, 614,  84, BTN_H, "Start",    Button.SUCCESS)
+        self.btn_conv_iface = Button(rx + 192, 614,  90, BTN_H, "Iface: 0", Button.GHOST)
 
     # ── Connection ────────────────────────────────────────────────────────────
 
@@ -485,6 +509,10 @@ class DobotController:
         self.is_connected = False
         self.btn_connect.text  = "Connect"
         self.btn_connect.style = Button.NORMAL
+        if self.conv_running:
+            self.conv_running = False
+            self.btn_conv_run.text  = "Start"
+            self.btn_conv_run.style = Button.SUCCESS
         self.logger.info("Disconnected")
 
     def _fetch_pos(self):
@@ -681,6 +709,55 @@ class DobotController:
     def seq_add_rel(self):
         self._seq_insert({"type": "move_rel", "params": {"x": 0, "y": 0, "z": 0, "r": 0}})
 
+    def seq_add_conveyor(self):
+        speed = round(self.conv_speed_slider.get() / 100.0, 2)
+        self._seq_insert({"type": "conveyor_belt", "params": {
+            "speed": speed, "direction": self.conv_direction,
+            "interface": self.conv_interface, "duration": 2.0}})
+
+    def seq_add_conveyor_dist(self):
+        speed_mm = round(self.conv_speed_slider.get(), 1)
+        self._seq_insert({"type": "conveyor_belt_distance", "params": {
+            "speed": speed_mm, "distance": 100.0,
+            "direction": self.conv_direction, "interface": self.conv_interface}})
+
+    # ── Conveyor live control ─────────────────────────────────────────────────
+
+    def cmd_conveyor_toggle(self):
+        if not self.is_connected:
+            self.logger.warning("Not connected")
+            return
+        if self.conv_running:
+            self.conv_running = False
+            self.btn_conv_run.text  = "Start"
+            self.btn_conv_run.style = Button.SUCCESS
+            d, i = self.conv_direction, self.conv_interface
+            threading.Thread(target=lambda: self.device.conveyor_belt(0, d, i),
+                             daemon=True).start()
+            self.logger.info("Conveyor stopped")
+        else:
+            self.conv_running = True
+            self.btn_conv_run.text  = "Stop"
+            self.btn_conv_run.style = Button.DANGER
+            speed = self.conv_speed_slider.get() / 100.0
+            d, i = self.conv_direction, self.conv_interface
+            threading.Thread(target=lambda: self.device.conveyor_belt(speed, d, i),
+                             daemon=True).start()
+            self.logger.info(f"Conveyor {int(speed*100)}% {'FWD' if d > 0 else 'REV'} iface={i}")
+
+    def toggle_conv_direction(self):
+        self.conv_direction = -1 if self.conv_direction == 1 else 1
+        self.btn_conv_dir.text = "Forward" if self.conv_direction == 1 else "Reverse"
+        if self.conv_running and self.is_connected:
+            speed = self.conv_speed_slider.get() / 100.0
+            d, i = self.conv_direction, self.conv_interface
+            threading.Thread(target=lambda: self.device.conveyor_belt(speed, d, i),
+                             daemon=True).start()
+
+    def toggle_conv_interface(self):
+        self.conv_interface = 1 - self.conv_interface
+        self.btn_conv_iface.text = f"Iface: {self.conv_interface}"
+
     # ── Sequence: inline editing ──────────────────────────────────────────────
 
     def _seq_start_edit(self, idx):
@@ -723,6 +800,16 @@ class DobotController:
             f2.max_len = 1
             fields.append(("address", f1))
             fields.append(("state", f2))
+        elif t == "conveyor_belt":
+            for i, k in enumerate(["speed", "direction", "interface", "duration"]):
+                f = InputField(sx + i * (ew + eg), ey, ew, str(p[k]))
+                f.max_len = 6
+                fields.append((k, f))
+        elif t == "conveyor_belt_distance":
+            for i, k in enumerate(["speed", "distance", "direction", "interface"]):
+                f = InputField(sx + i * (ew + eg), ey, ew, str(p[k]))
+                f.max_len = 6
+                fields.append((k, f))
         # home has no params
 
         self.seq_edit_fields = fields
@@ -736,9 +823,10 @@ class DobotController:
         try:
             for key, field in self.seq_edit_fields:
                 val = field.get().strip()
-                if key in ("x", "y", "z", "r", "seconds", "velocity", "acceleration"):
+                if key in ("x", "y", "z", "r", "seconds", "velocity", "acceleration",
+                           "speed", "distance", "duration"):
                     p[key] = float(val)
-                elif key == "address":
+                elif key in ("address", "direction", "interface"):
                     p[key] = int(val)
                 elif key in ("on", "state"):
                     p[key] = val not in ("0", "false", "False", "off", "OFF", "")
@@ -835,6 +923,14 @@ class DobotController:
             self.device.speed(p["velocity"], p["acceleration"])
         elif t == "set_io":
             self.device.set_io(p["address"], p["state"])
+        elif t == "conveyor_belt":
+            self.device.conveyor_belt(p["speed"], p["direction"], p["interface"])
+            if p["duration"] > 0:
+                self.seq_stop_evt.wait(timeout=p["duration"])
+                self.device.conveyor_belt(0, p["direction"], p["interface"])
+        elif t == "conveyor_belt_distance":
+            self.device.conveyor_belt_distance(p["speed"], p["distance"],
+                                               p["direction"], p["interface"])
 
     def _seq_wait_cmd(self, cmd_idx):
         """Poll for command completion, checking stop event every 100ms."""
@@ -991,9 +1087,15 @@ class DobotController:
         self.speed_slider.draw()
         self.btn_vacuum.draw()
         self.btn_clear_alarms.draw()
+        draw_panel(rx, 548, COL_RW, 100, "Conveyor Belt")
+        dlabel("Speed (%)", rx + 12, 568)
+        self.conv_speed_slider.draw()
+        self.btn_conv_dir.draw()
+        self.btn_conv_run.draw()
+        self.btn_conv_iface.draw()
 
     def _draw_sequence(self):
-        draw_panel(SEQ_X, 100, SEQ_W, 440, "Sequence Editor")
+        draw_panel(SEQ_X, 100, SEQ_W, 470, "Sequence Editor")
         # Step count
         count_txt = f"{len(self.sequence)} steps"
         ctw = measure_text(count_txt, FSM)
@@ -1002,6 +1104,7 @@ class DobotController:
         # Record buttons
         for btn in self.seq_add_btns:
             btn.draw()
+
 
         # Step list or load picker
         if self.seq_load_picker:
@@ -1019,7 +1122,9 @@ class DobotController:
         if self.seq_editing >= 0 and self.seq_edit_fields:
             ey = SEQ_LIST_Y + SEQ_LIST_H + 4
             labels = {"x":"X","y":"Y","z":"Z","r":"R","on":"ON?","seconds":"Sec",
-                      "velocity":"Vel","acceleration":"Accel","address":"Pin","state":"ON?"}
+                      "velocity":"Vel","acceleration":"Accel","address":"Pin","state":"ON?",
+                      "speed":"Speed","direction":"Dir","interface":"Iface",
+                      "duration":"Dur(s)","distance":"Dist"}
             for key, field in self.seq_edit_fields:
                 lbl = labels.get(key, key)
                 dlabel(lbl, field.rect.x, ey - 14, C_DIM)
@@ -1149,8 +1254,11 @@ class DobotController:
         if yp.clicked(): self.jog_step_move('y',  1)
         if self.btn_zm.clicked(): self.jog_step_move('z', -1)
         if self.btn_zp.clicked(): self.jog_step_move('z',  1)
-        if self.btn_vacuum.clicked(): self.toggle_vacuum()
+        if self.btn_vacuum.clicked():       self.toggle_vacuum()
         if self.btn_clear_alarms.clicked(): self.cmd_clear_alarms()
+        if self.btn_conv_dir.clicked():     self.toggle_conv_direction()
+        if self.btn_conv_run.clicked():     self.cmd_conveyor_toggle()
+        if self.btn_conv_iface.clicked():   self.toggle_conv_interface()
 
         # Keyboard jog (only when no input field is active)
         any_input_active = any(f.active for f in
@@ -1194,14 +1302,16 @@ class DobotController:
         self.btn_seq_clear.enabled = editing_ok
 
         # Record buttons
-        if self.btn_add_pos.clicked():  self.seq_add_position()
-        if self.btn_add_suck.clicked(): self.seq_add_suction()
-        if self.btn_add_grip.clicked(): self.seq_add_gripper()
-        if self.btn_add_wait.clicked(): self.seq_add_wait()
-        if self.btn_add_home.clicked(): self.seq_add_home()
-        if self.btn_add_spd.clicked():  self.seq_add_speed()
-        if self.btn_add_io.clicked():   self.seq_add_io()
-        if self.btn_add_rel.clicked():  self.seq_add_rel()
+        if self.btn_add_pos.clicked():   self.seq_add_position()
+        if self.btn_add_suck.clicked():  self.seq_add_suction()
+        if self.btn_add_grip.clicked():  self.seq_add_gripper()
+        if self.btn_add_wait.clicked():  self.seq_add_wait()
+        if self.btn_add_home.clicked():  self.seq_add_home()
+        if self.btn_add_spd.clicked():   self.seq_add_speed()
+        if self.btn_add_io.clicked():    self.seq_add_io()
+        if self.btn_add_rel.clicked():   self.seq_add_rel()
+        if self.btn_add_conv.clicked():  self.seq_add_conveyor()
+        if self.btn_add_convd.clicked(): self.seq_add_conveyor_dist()
 
         # Load picker interaction
         if self.seq_load_picker:
