@@ -1,0 +1,63 @@
+{
+  "name": "band",
+  "version": 1,
+  "steps": [
+    {
+      "type": "move_to",
+      "params": {
+        "x": 200,
+        "y": 0,
+        "z": 49.99999237060547,
+        "r": 0
+      }
+    },
+    {
+      "type": "conveyor_belt_distance",
+      "params": {
+        "speed": 100,
+        "distance": 220,
+        "direction": -1,
+        "interface": 0
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 159.99610900878906,
+        "y": -2.1438827514648438,
+        "z": 16.95557403564453,
+        "r": -0.7676941156387329
+      }
+    },
+    {
+      "type": "suction",
+      "params": {
+        "on": true
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 88.77155303955078,
+        "y": 313.09747314453125,
+        "z": 39.850181579589844,
+        "r": 74.17053985595703
+      }
+    },
+    {
+      "type": "suction",
+      "params": {
+        "on": false
+      }
+    },
+    {
+      "type": "move_to",
+      "params": {
+        "x": 200,
+        "y": 0,
+        "z": 49.99999237060547,
+        "r": 0
+      }
+    }
+  ]
+}

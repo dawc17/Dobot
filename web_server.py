@@ -30,6 +30,16 @@ def step_label(step: dict) -> str:
     if t == "conveyor_belt_distance":
         d = "FWD" if p["direction"] > 0 else "REV"
         return f"Belt {p['distance']:.0f}mm@{p['speed']:.0f}mm/s {d}"
+    if t == "color_branch":
+        parts = []
+        if p.get("on_red",   0) > 0: parts.append(f"R→{p['on_red']}")
+        if p.get("on_green", 0) > 0: parts.append(f"G→{p['on_green']}")
+        if p.get("on_blue",  0) > 0: parts.append(f"B→{p['on_blue']}")
+        return f"Color Branch {', '.join(parts) if parts else '(no branches set)'}"
+    if t == "wait_for_color":
+        colors = [c for c, k in [("R","wait_r"),("G","wait_g"),("B","wait_b")] if p.get(k)]
+        to = f" {p.get('timeout',10):.0f}s" if p.get("timeout", 10) > 0 else " ∞"
+        return f"Wait Color {'|'.join(colors) or '?'}{to}"
     return t
 
 # ── SSE broadcast ─────────────────────────────────────────────────────────────
@@ -86,6 +96,8 @@ class DobotCore:
         self._dev_lock  = threading.Lock()   # serialises all device serial I/O
         self._jog_lock  = threading.Lock()
         self._last_jog  = (0.0, 0.0, 0.0)
+        self._color_enabled: Optional[int] = None
+        self._ir_enabled:    Optional[int] = None
 
         self.sequence: List[dict] = []
         self.seq_playing  = False
@@ -94,6 +106,7 @@ class DobotCore:
         self.seq_current  = -1
         self.seq_stop_evt  = threading.Event()
         self.seq_pause_evt = threading.Event()
+        self._seq_jump: Optional[int] = None  # set by color_branch to jump to a step
 
         self.log_entries: List[dict] = []
         self._setup_logger()
@@ -190,15 +203,14 @@ class DobotCore:
         threading.Thread(target=_do, daemon=True).start()
 
     def disconnect(self):
-        global _color_enabled, _ir_enabled
         if self.device:
             try: self.device.close()
             except: pass
         self.device = None
         self.is_connected = False
         self.conv_running = False
-        _color_enabled = None
-        _ir_enabled    = None
+        self._color_enabled = None
+        self._ir_enabled    = None
         self.logger.info("Disconnected")
         self._push_state()
 
@@ -418,32 +430,37 @@ class DobotCore:
     def _seq_run(self):
         self.seq_playing = True
         self.seq_stop_evt.clear(); self.seq_pause_evt.set()
-        steps = list(self.sequence)
-        try:
-            self.device.clear_alarms()
-            self.device._set_queued_cmd_stop_exec()
-            self.device._set_queued_cmd_clear()
-            self.device._set_queued_cmd_start_exec()
-            time.sleep(0.1)
-        except Exception as e:
-            self.logger.error(f"Queue reset: {e}")
+
+        def _reset_queue():
+            try:
+                self.device.clear_alarms()
+                self.device._set_queued_cmd_stop_exec()
+                self.device._set_queued_cmd_clear()
+                self.device._set_queued_cmd_start_exec()
+                time.sleep(0.1)
+            except Exception as e:
+                self.logger.error(f"Queue reset: {e}")
+
+        _reset_queue()
         try:
             while True:
-                for i, step in enumerate(steps):
+                steps = list(self.sequence)
+                i = 0
+                while i < len(steps):
                     if self.seq_stop_evt.is_set(): return
                     self.seq_pause_evt.wait()
                     if self.seq_stop_evt.is_set(): return
                     self.seq_current = i; self._push_seq_state()
-                    self.logger.info(f"Step {i+1}/{len(steps)}: {step_label(step)}")
-                    self._seq_exec(step)
+                    self.logger.info(f"Step {i+1}/{len(steps)}: {step_label(steps[i])}")
+                    self._seq_jump = None
+                    self._seq_exec(steps[i])
+                    if self._seq_jump is not None:
+                        self.logger.info(f"Branch → step {self._seq_jump + 1}")
+                        i = self._seq_jump
+                    else:
+                        i += 1
                 if not self.seq_looping: break
-                try:
-                    self.device.clear_alarms()
-                    self.device._set_queued_cmd_stop_exec()
-                    self.device._set_queued_cmd_clear()
-                    self.device._set_queued_cmd_start_exec()
-                    time.sleep(0.1)
-                except Exception: pass
+                _reset_queue()
         except Exception as e:
             self.logger.error(f"Playback error at step {self.seq_current + 1}: {e}")
         finally:
@@ -482,6 +499,61 @@ class DobotCore:
                 self.conv_running = False
                 hub.push({"type": "conveyor", "running": False,
                           "speed": 0, "direction": p["direction"], "interface": p["interface"]})
+        elif t == "color_branch":
+            _PORTS = [Dobot.PORT_GP1, Dobot.PORT_GP2, Dobot.PORT_GP4, Dobot.PORT_GP5]
+            port = _PORTS[min(max(int(p.get("port", 1)), 0), 3)]
+            rgb  = [False, False, False]
+            if self._dev_lock.acquire(timeout=2.0):
+                try:
+                    if self._color_enabled != port:
+                        self.device.set_color(enable=True, port=port)
+                        time.sleep(0.15)
+                        self._color_enabled = port
+                    rgb = list(self.device.get_color(port=port))
+                except Exception as e:
+                    self.logger.warning(f"Color read: {e}")
+                finally:
+                    self._dev_lock.release()
+            detected = "/".join(c for c, v in [("R",rgb[0]),("G",rgb[1]),("B",rgb[2])] if v) or "none"
+            target = int(p.get("on_none", 0))
+            if   rgb[0] and int(p.get("on_red",   0)) > 0: target = int(p["on_red"])
+            elif rgb[1] and int(p.get("on_green", 0)) > 0: target = int(p["on_green"])
+            elif rgb[2] and int(p.get("on_blue",  0)) > 0: target = int(p["on_blue"])
+            self.logger.info(f"Color: {detected} → {'step '+str(target) if target > 0 else 'continue'}")
+            if target > 0:
+                self._seq_jump = target - 1   # stored as 1-based; convert to 0-based index
+        elif t == "wait_for_color":
+            _PORTS = [Dobot.PORT_GP1, Dobot.PORT_GP2, Dobot.PORT_GP4, Dobot.PORT_GP5]
+            port    = _PORTS[min(max(int(p.get("port", 1)), 0), 3)]
+            want_r  = bool(p.get("wait_r", False))
+            want_g  = bool(p.get("wait_g", False))
+            want_b  = bool(p.get("wait_b", False))
+            timeout = float(p.get("timeout", 10.0))
+            deadline = time.time() + timeout if timeout > 0 else None
+            # enable once
+            if self._dev_lock.acquire(timeout=2.0):
+                try:
+                    if self._color_enabled != port:
+                        self.device.set_color(enable=True, port=port)
+                        time.sleep(0.15)
+                        self._color_enabled = port
+                except Exception as e:
+                    self.logger.warning(f"Color enable: {e}")
+                finally:
+                    self._dev_lock.release()
+            while not self.seq_stop_evt.is_set():
+                if deadline and time.time() > deadline:
+                    self.logger.warning("wait_for_color timed out"); break
+                if self._dev_lock.acquire(blocking=False):
+                    try:
+                        rgb = self.device.get_color(port=port)
+                        if (want_r and rgb[0]) or (want_g and rgb[1]) or (want_b and rgb[2]):
+                            detected = "/".join(c for c,v in [("R",rgb[0]),("G",rgb[1]),("B",rgb[2])] if v)
+                            self.logger.info(f"Color detected: {detected}"); break
+                    except Exception: pass
+                    finally:
+                        self._dev_lock.release()
+                self.seq_stop_evt.wait(timeout=0.1)
         elif t == "conveyor_belt_distance":
             self.conv_running   = True
             self.conv_direction = p["direction"]
@@ -660,44 +732,38 @@ _PORT_MAP = {
     "GP5": Dobot.PORT_GP5,
 }
 
-# Track which ports have already been enabled so we don't re-initialize on every read
-_color_enabled: Optional[int] = None
-_ir_enabled:    Optional[int] = None
-
 @app.post("/api/color_sensor")
 def api_color_sensor():
-    global _color_enabled
     if not core.is_connected:
         return jsonify(error="Not connected"), 400
     d    = request.get_json(force=True) or {}
     port = _PORT_MAP.get(d.get("port", "GP2"), Dobot.PORT_GP2)
     try:
-        if _color_enabled != port:
+        if core._color_enabled != port:
             core.device.set_color(enable=True, port=port)
-            time.sleep(0.15)   # allow sensor to settle after enable
-            _color_enabled = port
+            time.sleep(0.15)
+            core._color_enabled = port
         rgb = core.device.get_color(port=port)
         return jsonify(r=bool(rgb[0]), g=bool(rgb[1]), b=bool(rgb[2]))
     except Exception as e:
-        _color_enabled = None
+        core._color_enabled = None
         return jsonify(error=str(e)), 500
 
 @app.post("/api/ir_sensor")
 def api_ir_sensor():
-    global _ir_enabled
     if not core.is_connected:
         return jsonify(error="Not connected"), 400
     d    = request.get_json(force=True) or {}
     port = _PORT_MAP.get(d.get("port", "GP4"), Dobot.PORT_GP4)
     try:
-        if _ir_enabled != port:
+        if core._ir_enabled != port:
             core.device.set_ir(enable=True, port=port)
             time.sleep(0.15)
-            _ir_enabled = port
+            core._ir_enabled = port
         detected = core.device.get_ir(port=port)
         return jsonify(detected=bool(detected))
     except Exception as e:
-        _ir_enabled = None
+        core._ir_enabled = None
         return jsonify(error=str(e)), 500
 
 

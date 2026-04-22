@@ -343,6 +343,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
         <button class="ghost add" data-type="set_io">+ IO</button>
         <button class="ghost add" data-type="conveyor_belt">+ Conv</button>
         <button class="ghost add" data-type="conveyor_belt_distance">+ Conv Dist</button>
+        <button class="ghost add" data-type="color_branch">+ Color Branch</button>
+        <button class="ghost add" data-type="wait_for_color">+ Wait Color</button>
       </div>
       <div id="seq-list"></div>
       <div class="btn-row">
@@ -542,6 +544,7 @@ const COLORS={
   wait:'#c89c20',home:'#6060a0',
   speed:'#4a85c8',set_io:'#c83848',
   conveyor_belt:'#c87820',conveyor_belt_distance:'#d06020',
+  color_branch:'#b040c0',wait_for_color:'#9030a8',
 };
 
 function slabel(s){
@@ -562,6 +565,18 @@ function slabel(s){
   if(t==='conveyor_belt_distance'){
     const d=p.direction>0?'FWD':'REV';
     return `Belt ${p.distance.toFixed(0)}mm@${p.speed.toFixed(0)}mm/s ${d}`;
+  }
+  if(t==='color_branch'){
+    const parts=[];
+    if(p.on_red>0)   parts.push(`R→${p.on_red}`);
+    if(p.on_green>0) parts.push(`G→${p.on_green}`);
+    if(p.on_blue>0)  parts.push(`B→${p.on_blue}`);
+    return `Color Branch ${parts.length?parts.join(', '):'(no branches set)'}`;
+  }
+  if(t==='wait_for_color'){
+    const colors=[p.wait_r?'R':null,p.wait_g?'G':null,p.wait_b?'B':null].filter(Boolean);
+    const to=p.timeout>0?` ${p.timeout.toFixed(0)}s`:' ∞';
+    return `Wait Color ${colors.join('|')||'?'}${to}`;
   }
   return t;
 }
@@ -607,6 +622,8 @@ function defStep(type){
     set_io:   {address:1,state:true},
     conveyor_belt:         {speed:0.5,direction:S.convDir,interface:S.convIface,duration:2.0},
     conveyor_belt_distance:{speed:50,distance:100,direction:S.convDir,interface:S.convIface},
+    color_branch:    {port:1, on_red:0, on_green:0, on_blue:0, on_none:0},
+    wait_for_color:  {port:1, wait_r:1, wait_g:0,   wait_b:0,  timeout:10},
   };
   const params=map[type]??{};
   if(type==='suction'||type==='gripper'){
@@ -645,6 +662,20 @@ const FIELDS={
     {k:'distance',l:'Distance (mm)'},
     {k:'direction',l:'Direction (1=fwd, −1=rev)'},
     {k:'interface',l:'Interface (0 or 1)'},
+  ],
+  color_branch:[
+    {k:'port',     l:'Sensor port (0=GP1 1=GP2 2=GP4 3=GP5)'},
+    {k:'on_red',   l:'Red detected → go to step# (0=continue)'},
+    {k:'on_green', l:'Green detected → go to step# (0=continue)'},
+    {k:'on_blue',  l:'Blue detected → go to step# (0=continue)'},
+    {k:'on_none',  l:'Nothing detected → go to step# (0=continue)'},
+  ],
+  wait_for_color:[
+    {k:'port',    l:'Sensor port (0=GP1 1=GP2 2=GP4 3=GP5)'},
+    {k:'wait_r',  l:'Wait for Red (1=yes 0=no)'},
+    {k:'wait_g',  l:'Wait for Green (1=yes 0=no)'},
+    {k:'wait_b',  l:'Wait for Blue (1=yes 0=no)'},
+    {k:'timeout', l:'Timeout seconds (0=infinite)'},
   ],
 };
 let editIdx=-1;
