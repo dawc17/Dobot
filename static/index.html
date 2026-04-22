@@ -813,7 +813,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   $('sp-sl').oninput=()=>$('sp-sv').textContent=$('sp-sl').value;
 
-  $('btn-vac').onclick=()=>post('/api/vacuum');
+  $('btn-vac').onclick=()=>post('/api/vacuum',{on:!S.vacuum});
   $('btn-alm').onclick=()=>post('/api/clear_alarms');
 
   $('cv-sl').oninput=()=>$('cv-sv').textContent=$('cv-sl').value;

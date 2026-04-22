@@ -83,6 +83,7 @@ class DobotCore:
         self.conv_interface = 0
 
         self.alarms: set = set()
+        self._dev_lock  = threading.Lock()   # serialises all device serial I/O
         self._jog_lock  = threading.Lock()
         self._last_jog  = (0.0, 0.0, 0.0)
 
@@ -189,23 +190,30 @@ class DobotCore:
         threading.Thread(target=_do, daemon=True).start()
 
     def disconnect(self):
+        global _color_enabled, _ir_enabled
         if self.device:
             try: self.device.close()
             except: pass
         self.device = None
         self.is_connected = False
         self.conv_running = False
+        _color_enabled = None
+        _ir_enabled    = None
         self.logger.info("Disconnected")
         self._push_state()
 
     def _fetch_pos(self):
         if not (self.is_connected and self.device): return
+        if not self._dev_lock.acquire(blocking=False):
+            return  # a command is running; skip this poll cycle
         try:
             p = self.device.get_pose().position
             self.pos = {"X": p.x, "Y": p.y, "Z": p.z, "R": p.r}
             hub.push({"type": "pos", **self.pos})
         except Exception as e:
             self.logger.warning(f"Pos update failed: {e}")
+        finally:
+            self._dev_lock.release()
 
     def _check_alarms(self):
         if not (self.is_connected and self.device): return
@@ -280,6 +288,8 @@ class DobotCore:
 
         def _do():
             if not self._jog_lock.acquire(blocking=False): return
+            if not self._dev_lock.acquire(blocking=False):
+                self._jog_lock.release(); return
             try:
                 if vx == 0 and vy == 0 and vz == 0:
                     self.device._set_jog_command(0)
@@ -295,17 +305,21 @@ class DobotCore:
             except Exception as e:
                 self.logger.error(f"Jog error: {e}")
             finally:
+                self._dev_lock.release()
                 self._jog_lock.release()
 
         threading.Thread(target=_do, daemon=True).start()
 
-    def toggle_vacuum(self):
+    def set_vacuum(self, on: bool):
         if not self.is_connected: return
-        self.vacuum_on = not self.vacuum_on
-        state = self.vacuum_on
-        threading.Thread(target=lambda: self.device.suck(state), daemon=True).start()
-        self.logger.info(f"Vacuum {'ON' if self.vacuum_on else 'OFF'}")
-        hub.push({"type": "vacuum", "on": self.vacuum_on})
+        self.vacuum_on = on
+        self.logger.info(f"Vacuum {'ON' if on else 'OFF'}")
+        hub.push({"type": "vacuum", "on": on})
+        def _do():
+            with self._dev_lock:
+                try: self.device.suck(on)
+                except Exception as e: self.logger.error(f"Vacuum error: {e}")
+        threading.Thread(target=_do, daemon=True).start()
 
     def cmd_conveyor(self, speed: float, direction: int, interface: int):
         if not self.is_connected: return
@@ -574,7 +588,10 @@ def api_jog():
 
 @app.post("/api/vacuum")
 def api_vacuum():
-    core.toggle_vacuum(); return jsonify(on=core.vacuum_on)
+    d = request.get_json(force=True) or {}
+    on = bool(d["on"]) if "on" in d else not core.vacuum_on
+    core.set_vacuum(on)
+    return jsonify(on=core.vacuum_on)
 
 @app.post("/api/conveyor")
 def api_conveyor():
@@ -643,30 +660,44 @@ _PORT_MAP = {
     "GP5": Dobot.PORT_GP5,
 }
 
+# Track which ports have already been enabled so we don't re-initialize on every read
+_color_enabled: Optional[int] = None
+_ir_enabled:    Optional[int] = None
+
 @app.post("/api/color_sensor")
 def api_color_sensor():
+    global _color_enabled
     if not core.is_connected:
         return jsonify(error="Not connected"), 400
     d    = request.get_json(force=True) or {}
     port = _PORT_MAP.get(d.get("port", "GP2"), Dobot.PORT_GP2)
     try:
-        core.device.set_color(enable=True, port=port)
+        if _color_enabled != port:
+            core.device.set_color(enable=True, port=port)
+            time.sleep(0.15)   # allow sensor to settle after enable
+            _color_enabled = port
         rgb = core.device.get_color(port=port)
         return jsonify(r=bool(rgb[0]), g=bool(rgb[1]), b=bool(rgb[2]))
     except Exception as e:
+        _color_enabled = None
         return jsonify(error=str(e)), 500
 
 @app.post("/api/ir_sensor")
 def api_ir_sensor():
+    global _ir_enabled
     if not core.is_connected:
         return jsonify(error="Not connected"), 400
     d    = request.get_json(force=True) or {}
     port = _PORT_MAP.get(d.get("port", "GP4"), Dobot.PORT_GP4)
     try:
-        core.device.set_ir(enable=True, port=port)
+        if _ir_enabled != port:
+            core.device.set_ir(enable=True, port=port)
+            time.sleep(0.15)
+            _ir_enabled = port
         detected = core.device.get_ir(port=port)
         return jsonify(detected=bool(detected))
     except Exception as e:
+        _ir_enabled = None
         return jsonify(error=str(e)), 500
 
 
