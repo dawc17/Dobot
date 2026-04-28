@@ -8,8 +8,9 @@ from serial.tools import list_ports
 from pydobotplus import Dobot
 from flask import Flask, Response, request, jsonify, stream_with_context, send_file
 
-SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
-STATIC_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+SEQUENCES_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
+STATIC_DIR     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+POSITIONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "positions.json")
 
 # ── Step label ────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,9 @@ def step_label(step: dict) -> str:
     t, p = step["type"], step["params"]
     if t == "move_to":   return f"Move To ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
     if t == "move_rel":  return f"Move Rel ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
+    if t == "move_to_named":
+        offs = [f"d{a}{p[k]:+.1f}" for a, k in [("X","dx"),("Y","dy"),("Z","dz"),("R","dr")] if p.get(k, 0)]
+        return f"→ '{p.get('name','?')}'" + (f" {' '.join(offs)}" if offs else "")
     if t == "suction":   return f"Suction {'ON' if p['on'] else 'OFF'}"
     if t == "gripper":   return f"Gripper {'ON' if p['on'] else 'OFF'}"
     if t == "wait":      return f"Wait {p['seconds']:.1f}s"
@@ -108,8 +112,11 @@ class DobotCore:
         self.seq_pause_evt = threading.Event()
         self._seq_jump: Optional[int] = None  # set by color_branch to jump to a step
 
+        self.named_positions: dict = {}
+
         self.log_entries: List[dict] = []
         self._setup_logger()
+        self._load_positions()
         self.refresh_ports()
 
     # ── Logger ────────────────────────────────────────────────────────────────
@@ -155,6 +162,7 @@ class DobotCore:
             "seq_looping":    self.seq_looping,
             "seq_current":    self.seq_current,
             "steps":          self.sequence,
+            "positions":      self.named_positions,
             "logs":           self.log_entries[-80:],
         }
 
@@ -402,6 +410,45 @@ class DobotCore:
         if not os.path.isdir(SEQUENCES_DIR): return []
         return sorted(f for f in os.listdir(SEQUENCES_DIR) if f.endswith(".json"))
 
+    # ── Named positions ───────────────────────────────────────────────────────
+
+    def _load_positions(self):
+        try:
+            if os.path.exists(POSITIONS_FILE):
+                with open(POSITIONS_FILE) as f:
+                    self.named_positions = json.load(f)
+        except Exception:
+            self.named_positions = {}
+
+    def _persist_positions(self):
+        try:
+            with open(POSITIONS_FILE, "w") as f:
+                json.dump(self.named_positions, f, indent=2)
+        except Exception as e:
+            self.logger.error(f"Save positions failed: {e}")
+
+    def save_named_position(self, name: str, x: float, y: float, z: float, r: float):
+        name = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()
+        if not name:
+            return
+        self.named_positions[name] = {"x": x, "y": y, "z": z, "r": r}
+        self._persist_positions()
+        hub.push({"type": "positions", "positions": self.named_positions})
+        self.logger.info(f"Saved position '{name}': X{x:.1f} Y{y:.1f} Z{z:.1f} R{r:.1f}")
+
+    def delete_named_position(self, name: str):
+        if name in self.named_positions:
+            del self.named_positions[name]
+            self._persist_positions()
+            hub.push({"type": "positions", "positions": self.named_positions})
+            self.logger.info(f"Deleted position '{name}'")
+
+    def go_named_position(self, name: str, dx: float, dy: float, dz: float, dr: float):
+        if name not in self.named_positions:
+            self.logger.error(f"Position '{name}' not found"); return
+        p = self.named_positions[name]
+        self.cmd_move_to(p["x"] + dx, p["y"] + dy, p["z"] + dz, p["r"] + dr)
+
     def seq_play(self):
         if not self.is_connected: self.logger.warning("Not connected"); return
         if not self.sequence:     self.logger.warning("Sequence empty"); return
@@ -554,6 +601,17 @@ class DobotCore:
                     finally:
                         self._dev_lock.release()
                 self.seq_stop_evt.wait(timeout=0.1)
+        elif t == "move_to_named":
+            name = p.get("name", "")
+            pos  = self.named_positions.get(name)
+            if not pos:
+                self.logger.error(f"Named position '{name}' not found"); return
+            self._seq_wait(self.device.move_to(
+                pos["x"] + p.get("dx", 0),
+                pos["y"] + p.get("dy", 0),
+                pos["z"] + p.get("dz", 0),
+                pos["r"] + p.get("dr", 0),
+                wait=False))
         elif t == "conveyor_belt_distance":
             self.conv_running   = True
             self.conv_direction = p["direction"]
@@ -765,6 +823,39 @@ def api_ir_sensor():
     except Exception as e:
         core._ir_enabled = None
         return jsonify(error=str(e)), 500
+
+
+@app.get("/api/positions")
+def api_positions_list():
+    return jsonify(positions=core.named_positions)
+
+@app.post("/api/positions")
+def api_positions_save():
+    d = request.get_json(force=True) or {}
+    name = str(d.get("name", "")).strip()
+    if not name:
+        return jsonify(error="name required"), 400
+    x = float(d.get("x", core.pos["X"]))
+    y = float(d.get("y", core.pos["Y"]))
+    z = float(d.get("z", core.pos["Z"]))
+    r = float(d.get("r", core.pos["R"]))
+    core.save_named_position(name, x, y, z, r)
+    return ok()
+
+@app.delete("/api/positions/<name>")
+def api_positions_delete(name):
+    core.delete_named_position(name)
+    return ok()
+
+@app.post("/api/positions/<name>/go")
+def api_positions_go(name):
+    d = request.get_json(force=True) or {}
+    core.go_named_position(
+        name,
+        float(d.get("dx", 0)), float(d.get("dy", 0)),
+        float(d.get("dz", 0)), float(d.get("dr", 0)),
+    )
+    return ok()
 
 
 if __name__ == "__main__":

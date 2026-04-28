@@ -639,6 +639,43 @@
         background: var(--sep);
       }
 
+      /* ── Named positions ── */
+      #np-list {
+        max-height: 120px;
+        overflow-y: auto;
+        border: 1px solid var(--sep);
+        border-radius: 3px;
+        margin-bottom: 6px;
+        min-height: 28px;
+      }
+      .np-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--sep);
+      }
+      .np-row:last-child { border-bottom: none; }
+      .np-row:hover { background: rgba(255,255,255,0.04); }
+      .np-row.selected { background: rgba(61,127,232,0.15); }
+      .np-n { flex: 1; font-family: var(--mono); font-size: 12px; }
+      .np-c { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+      .np-off-row {
+        display: grid;
+        grid-template-columns: 22px 1fr 22px 1fr 22px 1fr;
+        gap: 4px 6px;
+        align-items: center;
+        margin-bottom: 5px;
+      }
+      .np-off-row label {
+        color: var(--dim);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: right;
+      }
+      #np-name { min-width: 60px; flex: 1; }
+
       /* ── Scrollbars ── */
       ::-webkit-scrollbar {
         width: 4px;
@@ -734,6 +771,21 @@
             <button data-axis="y" data-sign="1">Y +</button>
             <button data-axis="z" data-sign="-1">Z &minus;</button>
             <button data-axis="z" data-sign="1">Z +</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="ph">Named Positions</div>
+          <div id="np-list"><div style="color:var(--muted);font-size:11px;padding:8px;text-align:center">No saved positions</div></div>
+          <div class="np-off-row">
+            <label>dX</label><input type="number" id="np-dx" value="0" step="0.1">
+            <label>dY</label><input type="number" id="np-dy" value="0" step="0.1">
+            <label>dZ</label><input type="number" id="np-dz" value="0" step="0.1">
+          </div>
+          <div class="btn-row">
+            <input type="text" id="np-name" placeholder="position name">
+            <button id="btn-np-save" class="ghost">Save</button>
+            <button id="btn-np-del" class="danger" style="display:none">Del</button>
+            <button id="btn-np-go">Go</button>
           </div>
         </div>
       </div>
@@ -850,6 +902,7 @@
             <button class="ghost add" data-type="wait_for_color">
               + Wait Color
             </button>
+            <button class="ghost add" data-type="move_to_named">+ Named</button>
           </div>
           <div id="seq-list"></div>
           <div class="btn-row">
@@ -921,6 +974,8 @@
         steps: [],
         selected: -1,
         jogStep: 20,
+        positions: {},
+        selectedPos: null,
       };
 
       const $ = (id) => document.getElementById(id);
@@ -986,6 +1041,9 @@
           case "ports":
             setPorts(d.ports, d.index);
             break;
+          case "positions":
+            applyPositions(d.positions);
+            break;
         }
       }
 
@@ -1008,6 +1066,7 @@
         renderSteps(S.steps);
         applySeqState(d);
         if (d.logs) d.logs.forEach(addLog);
+        applyPositions(d.positions || {});
       }
 
       function applyPos(p) {
@@ -1109,6 +1168,39 @@
         el.scrollTop = el.scrollHeight;
       }
 
+      // ── Named positions ───────────────────────────────────────────────────────
+      function applyPositions(positions) {
+        S.positions = positions || {};
+        if (S.selectedPos && !(S.selectedPos in S.positions)) S.selectedPos = null;
+        renderPositions();
+      }
+
+      function renderPositions() {
+        const list = $("np-list");
+        const names = Object.keys(S.positions);
+        $("btn-np-del").style.display = S.selectedPos ? "" : "none";
+        if (!names.length) {
+          list.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:8px;text-align:center">No saved positions</div>';
+          return;
+        }
+        list.innerHTML = names.map(n => {
+          const p = S.positions[n];
+          const sel = n === S.selectedPos;
+          return `<div class="np-row${sel ? " selected" : ""}" data-name="${esc(n)}">
+            <span class="np-n">${esc(n)}</span>
+            <span class="np-c">${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}</span>
+          </div>`;
+        }).join("");
+        list.querySelectorAll(".np-row").forEach(row => {
+          row.addEventListener("click", () => {
+            const n = row.dataset.name;
+            S.selectedPos = (S.selectedPos === n) ? null : n;
+            if (S.selectedPos) $("np-name").value = S.selectedPos;
+            renderPositions();
+          });
+        });
+      }
+
       // ── Step list ─────────────────────────────────────────────────────────────────
       const COLORS = {
         move_to: "#3d7fe8",
@@ -1123,6 +1215,7 @@
         conveyor_belt_distance: "#d06020",
         color_branch: "#b040c0",
         wait_for_color: "#9030a8",
+        move_to_named: "#38b2d0",
       };
 
       function slabel(s) {
@@ -1153,6 +1246,11 @@
           if (p.on_green > 0) parts.push(`G→${p.on_green}`);
           if (p.on_blue > 0) parts.push(`B→${p.on_blue}`);
           return `Color Branch ${parts.length ? parts.join(", ") : "(no branches set)"}`;
+        }
+        if (t === "move_to_named") {
+          const offs = [["X","dx"],["Y","dy"],["Z","dz"],["R","dr"]]
+            .filter(([,k]) => p[k]).map(([a,k]) => `d${a}${p[k]>0?"+":""}${p[k].toFixed(1)}`);
+          return `→ '${p.name || "?"}'${offs.length ? " " + offs.join(" ") : ""}`;
         }
         if (t === "wait_for_color") {
           const colors = [
@@ -1238,6 +1336,13 @@
             wait_b: 0,
             timeout: 10,
           },
+          move_to_named: {
+            name: S.selectedPos || "",
+            dx: 0,
+            dy: 0,
+            dz: 0,
+            dr: 0,
+          },
         };
         const params = map[type] ?? {};
         if (type === "suction" || type === "gripper") {
@@ -1310,6 +1415,13 @@
           { k: "wait_b", l: "Wait for Blue (1=yes 0=no)" },
           { k: "timeout", l: "Timeout seconds (0=infinite)" },
         ],
+        move_to_named: [
+          { k: "name", l: "Position name", type: "text" },
+          { k: "dx", l: "dX offset (mm)" },
+          { k: "dy", l: "dY offset (mm)" },
+          { k: "dz", l: "dZ offset (mm)" },
+          { k: "dr", l: "dR offset (°)" },
+        ],
       };
       let editIdx = -1;
 
@@ -1326,9 +1438,11 @@
           $("m-fields").innerHTML = flds
             .map((f) => {
               const v = s.params[f.k];
-              const dv = typeof v === "boolean" ? (v ? 1 : 0) : v;
+              const isText = f.type === "text";
+              const dv = isText ? (v ?? "") : (typeof v === "boolean" ? (v ? 1 : 0) : v);
+              const attrs = isText ? "" : 'type="number" step="any"';
               return `<div class="frow"><label>${f.l}</label>
-        <input type="number" step="any" data-k="${f.k}" value="${dv}"></div>`;
+        <input ${attrs}${isText ? 'type="text"' : ""} data-k="${f.k}" value="${esc(String(dv))}"></div>`;
             })
             .join("");
         }
@@ -1347,7 +1461,8 @@
           const k = inp.dataset.k,
             cur = step.params[k],
             v = inp.value;
-          if (typeof cur === "boolean")
+          if (inp.type === "text") step.params[k] = v;
+          else if (typeof cur === "boolean")
             step.params[k] = v !== "0" && v.toLowerCase() !== "false";
           else if (typeof cur === "number" && Number.isInteger(cur))
             step.params[k] = Math.round(parseFloat(v));
@@ -1591,6 +1706,29 @@
             interface: S.convIface,
           });
         }
+
+        // Named positions
+        $("btn-np-save").onclick = () => {
+          const name = $("np-name").value.trim();
+          if (!name) return;
+          post("/api/positions", { name });
+          S.selectedPos = name;
+        };
+        $("btn-np-del").onclick = () => {
+          if (!S.selectedPos) return;
+          fetch(`/api/positions/${encodeURIComponent(S.selectedPos)}`, { method: "DELETE" });
+          S.selectedPos = null;
+          $("np-name").value = "";
+        };
+        $("btn-np-go").onclick = () => {
+          if (!S.selectedPos) return;
+          post(`/api/positions/${encodeURIComponent(S.selectedPos)}/go`, {
+            dx: parseFloat($("np-dx").value) || 0,
+            dy: parseFloat($("np-dy").value) || 0,
+            dz: parseFloat($("np-dz").value) || 0,
+            dr: 0,
+          });
+        };
 
         $("btn-read-sensor").onclick = readSensors;
         $("btn-autopoll").onclick = toggleAutoPoll;
