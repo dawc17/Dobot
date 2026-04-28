@@ -1,0 +1,5 @@
+/build
+/dist
+/sequences/*
+!/sequences/.gitkeep
+/web_server.spec
