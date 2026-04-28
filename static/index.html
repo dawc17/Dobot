@@ -1737,12 +1737,30 @@
           .querySelectorAll(".add")
           .forEach((b) => (b.onclick = () => addStep(b.dataset.type)));
 
-        // Slett steg med Delete-tasten
+        // Slett steg med Delete-tasten og flytt steg med piltaster
         document.addEventListener("keydown", (e) => {
-          if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
+          const tag = document.activeElement?.tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA") return;
+          // Slett steg
           if (e.key === "Delete" && S.selected >= 0) {
             del(`/api/sequence/${S.selected}`);
             S.selected = Math.max(-1, S.selected - 1);
+            return;
+          }
+          if ((e.key === "ArrowUp" || e.key === "Up") && S.selected > 0) {
+            post("/api/sequence/move", { idx: S.selected, delta: -1 });
+            S.selected--;
+            renderSteps(null);
+            e.preventDefault();
+            return;
+          }
+          // Flytt steg ned
+          if ((e.key === "ArrowDown" || e.key === "Down") && S.selected < S.steps.length - 1 && S.selected >= 0) {
+            post("/api/sequence/move", { idx: S.selected, delta: 1 });
+            S.selected++;
+            renderSteps(null);
+            e.preventDefault();
+            return;
           }
         });
 
