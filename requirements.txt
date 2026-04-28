@@ -1,0 +1,4 @@
+flask
+pydobotplus
+pyserial
+pyray

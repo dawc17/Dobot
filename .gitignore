@@ -1,5 +1,8 @@
+/positions.json
 /build
 /dist
 /sequences/*
 !/sequences/.gitkeep
 /web_server.spec
+/.ruff_cache
+/pyproject.toml

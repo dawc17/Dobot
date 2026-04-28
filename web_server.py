@@ -1,52 +1,95 @@
 #!/usr/bin/env python3
 """Dobot Web UI — python web_server.py [port]"""
 
-import copy, json, logging, os, queue, sys, threading, time
-from typing import Optional, List
+import copy
+import json
+import logging
+import os
+import queue
+import sys
+import threading
+import time
+from typing import List, Optional
 
-from serial.tools import list_ports
+from flask import Flask, Response, jsonify, request, send_file, stream_with_context
 from pydobotplus import Dobot
-from flask import Flask, Response, request, jsonify, stream_with_context, send_file
+from serial.tools import list_ports
 
-SEQUENCES_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
-STATIC_DIR     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-POSITIONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "positions.json")
+SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+POSITIONS_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "positions.json"
+)
 
 # ── Step label ────────────────────────────────────────────────────────────────
 
+
 def step_label(step: dict) -> str:
     t, p = step["type"], step["params"]
-    if t == "move_to":   return f"Move To ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
-    if t == "move_rel":  return f"Move Rel ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
+    speed_suffix = f" @{p['speed']:.0f}mm/s" if p.get("speed") else ""
+    if t == "move_to":
+        return f"Move To ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f}){speed_suffix}"
+    if t == "move_rel":
+        return f"Move Rel ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f}){speed_suffix}"
     if t == "move_to_named":
-        offs = [f"d{a}{p[k]:+.1f}" for a, k in [("X","dx"),("Y","dy"),("Z","dz"),("R","dr")] if p.get(k, 0)]
-        return f"→ '{p.get('name','?')}'" + (f" {' '.join(offs)}" if offs else "")
-    if t == "suction":   return f"Suction {'ON' if p['on'] else 'OFF'}"
-    if t == "gripper":   return f"Gripper {'ON' if p['on'] else 'OFF'}"
-    if t == "wait":      return f"Wait {p['seconds']:.1f}s"
-    if t == "home":      return "Home"
-    if t == "speed":     return f"Speed {p['velocity']:.0f} mm/s"
-    if t == "set_io":    return f"IO #{p['address']} {'ON' if p['state'] else 'OFF'}"
+        offs = [
+            f"d{a}{p[k]:+.1f}"
+            for a, k in [("X", "dx"), ("Y", "dy"), ("Z", "dz"), ("R", "dr")]
+            if p.get(k, 0)
+        ]
+        speed_suffix = f" @{p['speed']:.0f}mm/s" if p.get("speed") else ""
+        return (
+            f"→ '{p.get('name', '?')}'"
+            + (f" {' '.join(offs)}" if offs else "")
+            + speed_suffix
+        )
+    if t == "suction":
+        return f"Suction {'ON' if p['on'] else 'OFF'}"
+    if t == "gripper":
+        return f"Gripper {'ON' if p['on'] else 'OFF'}"
+    if t == "wait":
+        return f"Wait {p['seconds']:.1f}s"
+    if t == "home":
+        return "Home"
+    if t == "speed":
+        return f"Speed {p['velocity']:.0f} mm/s"
+    if t == "set_io":
+        return f"IO #{p['address']} {'ON' if p['state'] else 'OFF'}"
     if t == "conveyor_belt":
-        d   = "FWD" if p["direction"] > 0 else "REV"
+        d = "FWD" if p["direction"] > 0 else "REV"
         dur = f" {p['duration']:.1f}s" if p["duration"] > 0 else " cont."
-        return f"Belt {int(p['speed']*100)}% {d}{dur}"
+        return f"Belt {int(p['speed'] * 100)}% {d}{dur}"
     if t == "conveyor_belt_distance":
         d = "FWD" if p["direction"] > 0 else "REV"
         return f"Belt {p['distance']:.0f}mm@{p['speed']:.0f}mm/s {d}"
     if t == "color_branch":
         parts = []
-        if p.get("on_red",   0) > 0: parts.append(f"R→{p['on_red']}")
-        if p.get("on_green", 0) > 0: parts.append(f"G→{p['on_green']}")
-        if p.get("on_blue",  0) > 0: parts.append(f"B→{p['on_blue']}")
+        if p.get("on_red", 0) > 0:
+            parts.append(f"R→{p['on_red']}")
+        if p.get("on_green", 0) > 0:
+            parts.append(f"G→{p['on_green']}")
+        if p.get("on_blue", 0) > 0:
+            parts.append(f"B→{p['on_blue']}")
         return f"Color Branch {', '.join(parts) if parts else '(no branches set)'}"
     if t == "wait_for_color":
-        colors = [c for c, k in [("R","wait_r"),("G","wait_g"),("B","wait_b")] if p.get(k)]
-        to = f" {p.get('timeout',10):.0f}s" if p.get("timeout", 10) > 0 else " ∞"
+        colors = [
+            c
+            for c, k in [("R", "wait_r"), ("G", "wait_g"), ("B", "wait_b")]
+            if p.get(k)
+        ]
+        to = f" {p.get('timeout', 10):.0f}s" if p.get("timeout", 10) > 0 else " ∞"
         return f"Wait Color {'|'.join(colors) or '?'}{to}"
+    if t == "loop_n":
+        return f"Loop {p.get('count', 1)} times"
+    if t == "wait_io":
+        return f"Wait IO #{p.get('address', 1)} {'HIGH' if p.get('state', True) else 'LOW'}"
+    if t == "run_sequence":
+        return f"Run Sequence '{p.get('filename', '?')}'"
     return t
 
+
 # ── SSE broadcast ─────────────────────────────────────────────────────────────
+
 
 class SseHub:
     def __init__(self):
@@ -61,8 +104,10 @@ class SseHub:
 
     def unsubscribe(self, q: queue.Queue):
         with self._lock:
-            try: self._qs.remove(q)
-            except ValueError: pass
+            try:
+                self._qs.remove(q)
+            except ValueError:
+                pass
 
     def push(self, data: dict):
         with self._lock:
@@ -72,45 +117,56 @@ class SseHub:
         msg = json.dumps(data)
         dead = []
         for q in qs:
-            try: q.put_nowait(msg)
-            except queue.Full: dead.append(q)
+            try:
+                q.put_nowait(msg)
+            except queue.Full:
+                dead.append(q)
         for q in dead:
             self.unsubscribe(q)
+
 
 hub = SseHub()
 
 # ── DobotCore ─────────────────────────────────────────────────────────────────
 
+
 class DobotCore:
     def __init__(self):
         self.device: Optional[Dobot] = None
         self.is_connected = False
-        self.connecting   = False
+        self.connecting = False
         self.available_ports: List[str] = []
         self.port_index = 0
         self.pos = {"X": 0.0, "Y": 0.0, "Z": 0.0, "R": 0.0}
         self.running = True
 
-        self.vacuum_on      = False
-        self.conv_running   = False
+        self.vacuum_on = False
+        self.conv_running = False
         self.conv_direction = 1
         self.conv_interface = 0
 
         self.alarms: set = set()
-        self._dev_lock  = threading.Lock()   # serialises all device serial I/O
-        self._jog_lock  = threading.Lock()
-        self._last_jog  = (0.0, 0.0, 0.0)
+        self._dev_lock = threading.Lock()  # serialises all device serial I/O
+        self._jog_lock = threading.Lock()
+        self._last_jog = (0.0, 0.0, 0.0)
         self._color_enabled: Optional[int] = None
-        self._ir_enabled:    Optional[int] = None
+        self._ir_enabled: Optional[int] = None
 
         self.sequence: List[dict] = []
-        self.seq_playing  = False
-        self.seq_paused   = False
-        self.seq_looping  = False
-        self.seq_current  = -1
-        self.seq_stop_evt  = threading.Event()
+        self.seq_playing = False
+        self.seq_paused = False
+        self.seq_looping = False
+        self.seq_current = -1
+        self.seq_stop_evt = threading.Event()
         self.seq_pause_evt = threading.Event()
         self._seq_jump: Optional[int] = None  # set by color_branch to jump to a step
+
+        # Teach mode
+        self.teach_recording = False
+        self.teach_last_pos = None
+
+        # Loop state
+        self.loop_stack = []  # Stack of {start, end, count, remaining} for nested loops
 
         self.named_positions: dict = {}
 
@@ -127,9 +183,11 @@ class DobotCore:
             self._c = core
 
         def emit(self, record):
-            entry = {"level": record.levelname,
-                     "msg":   self.format(record),
-                     "ts":    time.strftime("%H:%M:%S")}
+            entry = {
+                "level": record.levelname,
+                "msg": self.format(record),
+                "ts": time.strftime("%H:%M:%S"),
+            }
             c = self._c
             c.log_entries.append(entry)
             if len(c.log_entries) > 200:
@@ -147,23 +205,24 @@ class DobotCore:
 
     def get_state(self) -> dict:
         return {
-            "type":           "state",
-            "connected":      self.is_connected,
-            "connecting":     self.connecting,
-            "ports":          self.available_ports,
-            "port_index":     self.port_index,
-            "pos":            self.pos,
-            "vacuum":         self.vacuum_on,
-            "conv_running":   self.conv_running,
+            "type": "state",
+            "connected": self.is_connected,
+            "connecting": self.connecting,
+            "ports": self.available_ports,
+            "port_index": self.port_index,
+            "pos": self.pos,
+            "vacuum": self.vacuum_on,
+            "conv_running": self.conv_running,
             "conv_direction": self.conv_direction,
             "conv_interface": self.conv_interface,
-            "seq_playing":    self.seq_playing,
-            "seq_paused":     self.seq_paused,
-            "seq_looping":    self.seq_looping,
-            "seq_current":    self.seq_current,
-            "steps":          self.sequence,
-            "positions":      self.named_positions,
-            "logs":           self.log_entries[-80:],
+            "seq_playing": self.seq_playing,
+            "seq_paused": self.seq_paused,
+            "seq_looping": self.seq_looping,
+            "seq_current": self.seq_current,
+            "steps": self.sequence,
+            "positions": self.named_positions,
+            "teach_recording": self.teach_recording,
+            "logs": self.log_entries[-80:],
         }
 
     def _push_state(self):
@@ -175,19 +234,25 @@ class DobotCore:
         infos = list_ports.comports()
         self.available_ports = [p.device for p in infos]
         if self.available_ports:
-            usb = [p.device for p in infos if
-                   "USB" in (p.hwid or "").upper() or
-                   "USB" in (p.description or "").upper()]
+            usb = [
+                p.device
+                for p in infos
+                if "USB" in (p.hwid or "").upper()
+                or "USB" in (p.description or "").upper()
+            ]
             if usb:
                 self.port_index = self.available_ports.index(usb[0])
             self.logger.info(f"Found {len(self.available_ports)} port(s)")
         else:
             self.logger.warning("No COM ports found")
-        hub.push({"type": "ports", "ports": self.available_ports, "index": self.port_index})
+        hub.push(
+            {"type": "ports", "ports": self.available_ports, "index": self.port_index}
+        )
 
     def connect(self, port: Optional[str] = None):
         if not self.available_ports and not port:
-            self.logger.error("No ports available"); return
+            self.logger.error("No ports available")
+            return
         target = port or self.available_ports[self.port_index]
         self.connecting = True
         self._push_state()
@@ -212,18 +277,21 @@ class DobotCore:
 
     def disconnect(self):
         if self.device:
-            try: self.device.close()
-            except: pass
+            try:
+                self.device.close()
+            except Exception:
+                pass
         self.device = None
         self.is_connected = False
         self.conv_running = False
         self._color_enabled = None
-        self._ir_enabled    = None
+        self._ir_enabled = None
         self.logger.info("Disconnected")
         self._push_state()
 
     def _fetch_pos(self):
-        if not (self.is_connected and self.device): return
+        if not (self.is_connected and self.device):
+            return
         if not self._dev_lock.acquire(blocking=False):
             return  # a command is running; skip this poll cycle
         try:
@@ -236,14 +304,18 @@ class DobotCore:
             self._dev_lock.release()
 
     def _check_alarms(self):
-        if not (self.is_connected and self.device): return
+        if not (self.is_connected and self.device):
+            return
         try:
             self.alarms = self.device.get_alarms()
             if self.alarms:
                 self.device.clear_alarms()
-                self.logger.warning(f"Cleared alarms: {', '.join(str(a) for a in self.alarms)}")
+                self.logger.warning(
+                    f"Cleared alarms: {', '.join(str(a) for a in self.alarms)}"
+                )
                 self.alarms = set()
-        except Exception: pass
+        except Exception:
+            pass
 
     def _start_pos_thread(self):
         def _loop():
@@ -251,12 +323,16 @@ class DobotCore:
             while self.running and self.is_connected:
                 self._fetch_pos()
                 tick += 1
-                if tick % 4 == 0: self._check_alarms()
+                if tick % 4 == 0:
+                    self._check_alarms()
                 time.sleep(0.5)
+
         threading.Thread(target=_loop, daemon=True).start()
 
     def cmd_clear_alarms(self):
-        if not self.is_connected: return
+        if not self.is_connected:
+            return
+
         def _do():
             try:
                 self.device.clear_alarms()
@@ -266,50 +342,67 @@ class DobotCore:
                 self.logger.info("Alarms cleared, queue reset")
             except Exception as e:
                 self.logger.error(f"Clear alarms failed: {e}")
+
         threading.Thread(target=_do, daemon=True).start()
 
     # ── Manual control ────────────────────────────────────────────────────────
 
     def _safe_move(self, x, y, z, r):
         try:
-            if self.device.get_alarms(): self.device.clear_alarms()
+            if self.device.get_alarms():
+                self.device.clear_alarms()
             self.device.move_to(x, y, z, r)
         except Exception as e:
             self.logger.error(f"Move failed: {e}")
 
     def cmd_move_to(self, x, y, z, r):
-        if not self.is_connected: return
+        if not self.is_connected:
+            return
         self.logger.info(f"Move → X{x:.1f} Y{y:.1f} Z{z:.1f} R{r:.1f}")
-        threading.Thread(target=lambda: self._safe_move(x, y, z, r), daemon=True).start()
+        threading.Thread(
+            target=lambda: self._safe_move(x, y, z, r), daemon=True
+        ).start()
 
     def cmd_home(self):
-        if not self.is_connected: self.logger.warning("Not connected"); return
+        if not self.is_connected:
+            self.logger.warning("Not connected")
+            return
         self.logger.info("Homing…")
         threading.Thread(target=self.device.home, daemon=True).start()
 
     def cmd_jog_step(self, axis: str, sign: int, step: float):
-        if not self.is_connected: return
+        if not self.is_connected:
+            return
         x = self.pos["X"] + (step * sign if axis == "x" else 0)
         y = self.pos["Y"] + (step * sign if axis == "y" else 0)
         z = self.pos["Z"] + (step * sign if axis == "z" else 0)
         r = self.pos["R"]
         self.logger.info(f"Step {axis.upper()}{'+' if sign > 0 else '-'}{step:.0f} mm")
-        threading.Thread(target=lambda: self._safe_move(x, y, z, r), daemon=True).start()
+        threading.Thread(
+            target=lambda: self._safe_move(x, y, z, r), daemon=True
+        ).start()
 
     def handle_jog(self, vx: float, vy: float, vz: float, speed: float):
-        if not (self.is_connected and self.device): return
+        if not (self.is_connected and self.device):
+            return
         dz = 0.04
-        if abs(vx) < dz: vx = 0
-        if abs(vy) < dz: vy = 0
-        if abs(vz) < dz: vz = 0
+        if abs(vx) < dz:
+            vx = 0
+        if abs(vy) < dz:
+            vy = 0
+        if abs(vz) < dz:
+            vz = 0
         cur = (round(vx, 3), round(vy, 3), round(vz, 3))
-        if cur == self._last_jog: return
+        if cur == self._last_jog:
+            return
         self._last_jog = cur
 
         def _do():
-            if not self._jog_lock.acquire(blocking=False): return
+            if not self._jog_lock.acquire(blocking=False):
+                return
             if not self._dev_lock.acquire(blocking=False):
-                self._jog_lock.release(); return
+                self._jog_lock.release()
+                return
             try:
                 if vx == 0 and vy == 0 and vz == 0:
                     self.device._set_jog_command(0)
@@ -331,30 +424,46 @@ class DobotCore:
         threading.Thread(target=_do, daemon=True).start()
 
     def set_vacuum(self, on: bool):
-        if not self.is_connected: return
+        if not self.is_connected:
+            return
         self.vacuum_on = on
         self.logger.info(f"Vacuum {'ON' if on else 'OFF'}")
         hub.push({"type": "vacuum", "on": on})
+
         def _do():
             with self._dev_lock:
-                try: self.device.suck(on)
-                except Exception as e: self.logger.error(f"Vacuum error: {e}")
+                try:
+                    self.device.suck(on)
+                except Exception as e:
+                    self.logger.error(f"Vacuum error: {e}")
+
         threading.Thread(target=_do, daemon=True).start()
 
     def cmd_conveyor(self, speed: float, direction: int, interface: int):
-        if not self.is_connected: return
-        self.conv_running   = speed > 0
+        if not self.is_connected:
+            return
+        self.conv_running = speed > 0
         self.conv_direction = direction
         self.conv_interface = interface
         d, i = direction, interface
-        threading.Thread(target=lambda: self.device.conveyor_belt(speed, d, i),
-                         daemon=True).start()
+        threading.Thread(
+            target=lambda: self.device.conveyor_belt(speed, d, i), daemon=True
+        ).start()
         if speed > 0:
-            self.logger.info(f"Conveyor {int(speed*100)}% {'FWD' if direction > 0 else 'REV'} iface={interface}")
+            self.logger.info(
+                f"Conveyor {int(speed * 100)}% {'FWD' if direction > 0 else 'REV'} iface={interface}"
+            )
         else:
             self.logger.info("Conveyor stopped")
-        hub.push({"type": "conveyor", "running": self.conv_running,
-                  "speed": speed, "direction": direction, "interface": interface})
+        hub.push(
+            {
+                "type": "conveyor",
+                "running": self.conv_running,
+                "speed": speed,
+                "direction": direction,
+                "interface": interface,
+            }
+        )
 
     # ── Sequence management ───────────────────────────────────────────────────
 
@@ -362,20 +471,26 @@ class DobotCore:
         hub.push({"type": "steps", "steps": self.sequence})
 
     def seq_insert(self, idx: int, step: dict):
-        self.sequence.insert(idx, step); self._push_steps()
+        self.sequence.insert(idx, step)
+        self._push_steps()
 
     def seq_delete(self, idx: int):
         if 0 <= idx < len(self.sequence):
-            self.sequence.pop(idx); self._push_steps()
+            self.sequence.pop(idx)
+            self._push_steps()
 
     def seq_update(self, idx: int, step: dict):
         if 0 <= idx < len(self.sequence):
-            self.sequence[idx] = step; self._push_steps()
+            self.sequence[idx] = step
+            self._push_steps()
 
     def seq_move(self, idx: int, delta: int):
         ni = idx + delta
         if 0 <= ni < len(self.sequence):
-            self.sequence[idx], self.sequence[ni] = self.sequence[ni], self.sequence[idx]
+            self.sequence[idx], self.sequence[ni] = (
+                self.sequence[ni],
+                self.sequence[idx],
+            )
             self._push_steps()
 
     def seq_dup(self, idx: int):
@@ -384,7 +499,8 @@ class DobotCore:
             self._push_steps()
 
     def seq_clear(self):
-        self.sequence.clear(); self._push_steps()
+        self.sequence.clear()
+        self._push_steps()
 
     def seq_save(self, name: str):
         name = "".join(c for c in name if c.isalnum() or c in "-_ ") or "untitled"
@@ -404,10 +520,12 @@ class DobotCore:
             self._push_steps()
             return name
         except Exception as e:
-            self.logger.error(f"Load failed: {e}"); return None
+            self.logger.error(f"Load failed: {e}")
+            return None
 
     def seq_files(self) -> List[str]:
-        if not os.path.isdir(SEQUENCES_DIR): return []
+        if not os.path.isdir(SEQUENCES_DIR):
+            return []
         return sorted(f for f in os.listdir(SEQUENCES_DIR) if f.endswith(".json"))
 
     # ── Named positions ───────────────────────────────────────────────────────
@@ -434,7 +552,9 @@ class DobotCore:
         self.named_positions[name] = {"x": x, "y": y, "z": z, "r": r}
         self._persist_positions()
         hub.push({"type": "positions", "positions": self.named_positions})
-        self.logger.info(f"Saved position '{name}': X{x:.1f} Y{y:.1f} Z{z:.1f} R{r:.1f}")
+        self.logger.info(
+            f"Saved position '{name}': X{x:.1f} Y{y:.1f} Z{z:.1f} R{r:.1f}"
+        )
 
     def delete_named_position(self, name: str):
         if name in self.named_positions:
@@ -445,38 +565,210 @@ class DobotCore:
 
     def go_named_position(self, name: str, dx: float, dy: float, dz: float, dr: float):
         if name not in self.named_positions:
-            self.logger.error(f"Position '{name}' not found"); return
+            self.logger.error(f"Position '{name}' not found")
+            return
         p = self.named_positions[name]
         self.cmd_move_to(p["x"] + dx, p["y"] + dy, p["z"] + dz, p["r"] + dr)
 
+    # ── Teach mode ────────────────────────────────────────────────────────────
+
+    def teach_start(self):
+        """Start teach mode recording"""
+        if not self.is_connected:
+            self.logger.warning("Not connected")
+            return
+        self.teach_recording = True
+        self.teach_last_pos = None
+        hub.push({"type": "teach_mode", "recording": True})
+        self.logger.info(
+            "Teach mode started - move arm and press capture to record waypoints"
+        )
+
+    def teach_stop(self):
+        """Stop teach mode recording"""
+        self.teach_recording = False
+        self.teach_last_pos = None
+        hub.push({"type": "teach_mode", "recording": False})
+        self.logger.info("Teach mode stopped")
+
+    def teach_capture(self):
+        """Capture current position as a waypoint in teach mode"""
+        if not self.teach_recording or not self.is_connected:
+            return
+
+        current_pos = self.pos.copy()
+
+        # Skip if position hasn't changed significantly (< 1mm)
+        if self.teach_last_pos:
+            dx = abs(current_pos["X"] - self.teach_last_pos["X"])
+            dy = abs(current_pos["Y"] - self.teach_last_pos["Y"])
+            dz = abs(current_pos["Z"] - self.teach_last_pos["Z"])
+            dr = abs(current_pos["R"] - self.teach_last_pos["R"])
+            if dx < 1.0 and dy < 1.0 and dz < 1.0 and dr < 5.0:
+                self.logger.info("Position unchanged - skipping waypoint")
+                return
+
+        step = {
+            "type": "move_to",
+            "params": {
+                "x": current_pos["X"],
+                "y": current_pos["Y"],
+                "z": current_pos["Z"],
+                "r": current_pos["R"],
+            },
+        }
+
+        self.sequence.append(step)
+        self.teach_last_pos = current_pos
+        self._push_steps()
+        self.logger.info(
+            f"Waypoint captured: X{current_pos['X']:.1f} Y{current_pos['Y']:.1f} Z{current_pos['Z']:.1f} R{current_pos['R']:.1f}"
+        )
+
+    # ── Color Sort Wizard ─────────────────────────────────────────────────────
+
+    def create_color_sort_sequence(
+        self, red_pos=None, green_pos=None, blue_pos=None, pick_height=50
+    ):
+        """Generate a complete color sorting sequence"""
+        if not red_pos and not green_pos and not blue_pos:
+            self.logger.error("At least one bin position must be provided")
+            return
+
+        steps = []
+
+        # Add home step
+        steps.append({"type": "home", "params": {}})
+
+        # Set speed for sorting
+        steps.append(
+            {"type": "speed", "params": {"velocity": 100, "acceleration": 100}}
+        )
+
+        # Wait for object on conveyor (IR sensor)
+        steps.append(
+            {
+                "type": "wait_for_color",
+                "params": {
+                    "wait_r": True,
+                    "wait_g": True,
+                    "wait_b": True,
+                    "timeout": 0,
+                },
+            }
+        )
+
+        # Read color and branch
+        branches = {}
+        step_num = 5  # Starting after the above steps
+
+        if red_pos:
+            branches["on_red"] = step_num
+            step_num += 4  # Each color sequence takes ~4 steps
+        if green_pos:
+            branches["on_green"] = step_num
+            step_num += 4
+        if blue_pos:
+            branches["on_blue"] = step_num
+
+        steps.append({"type": "color_branch", "params": branches})
+
+        # Add sequences for each color
+        for color, pos in [("red", red_pos), ("green", green_pos), ("blue", blue_pos)]:
+            if pos:
+                # Move to pick position
+                steps.append(
+                    {
+                        "type": "move_to",
+                        "params": {
+                            "x": pos["x"],
+                            "y": pos["y"],
+                            "z": pos["z"] + pick_height,
+                            "r": pos["r"],
+                        },
+                    }
+                )
+                # Move down to pick
+                steps.append(
+                    {
+                        "type": "move_to",
+                        "params": {
+                            "x": pos["x"],
+                            "y": pos["y"],
+                            "z": pos["z"],
+                            "r": pos["r"],
+                        },
+                    }
+                )
+                # Turn on suction
+                steps.append({"type": "suction", "params": {"on": True}})
+                # Move up
+                steps.append(
+                    {
+                        "type": "move_to",
+                        "params": {
+                            "x": pos["x"],
+                            "y": pos["y"],
+                            "z": pos["z"] + pick_height,
+                            "r": pos["r"],
+                        },
+                    }
+                )
+                # Move to bin and release
+                # Note: In a real implementation, you'd have separate bin positions
+                steps.append({"type": "suction", "params": {"on": False}})
+
+        # Replace current sequence
+        self.sequence = steps
+        self._push_steps()
+        self.logger.info(f"Color sort sequence created with {len(steps)} steps")
+
+    # ── Sequence playback ─────────────────────────────────────────────────────
+
     def seq_play(self):
-        if not self.is_connected: self.logger.warning("Not connected"); return
-        if not self.sequence:     self.logger.warning("Sequence empty"); return
-        if self.seq_playing: return
+        if not self.is_connected:
+            self.logger.warning("Not connected")
+            return
+        if not self.sequence:
+            self.logger.warning("Sequence empty")
+            return
+        if self.seq_playing:
+            return
         threading.Thread(target=self._seq_run, daemon=True).start()
 
     def seq_pause_toggle(self):
-        if not self.seq_playing: return
+        if not self.seq_playing:
+            return
         self.seq_paused = not self.seq_paused
-        if self.seq_paused: self.seq_pause_evt.clear()
-        else:               self.seq_pause_evt.set()
+        if self.seq_paused:
+            self.seq_pause_evt.clear()
+        else:
+            self.seq_pause_evt.set()
         self._push_seq_state()
 
     def seq_stop(self):
-        self.seq_stop_evt.set(); self.seq_pause_evt.set()
+        self.seq_stop_evt.set()
+        self.seq_pause_evt.set()
 
     def seq_loop_toggle(self) -> bool:
         self.seq_looping = not self.seq_looping
         return self.seq_looping
 
     def _push_seq_state(self):
-        hub.push({"type": "seq_state",
-                  "playing": self.seq_playing,  "paused":  self.seq_paused,
-                  "current": self.seq_current,  "looping": self.seq_looping})
+        hub.push(
+            {
+                "type": "seq_state",
+                "playing": self.seq_playing,
+                "paused": self.seq_paused,
+                "current": self.seq_current,
+                "looping": self.seq_looping,
+            }
+        )
 
     def _seq_run(self):
         self.seq_playing = True
-        self.seq_stop_evt.clear(); self.seq_pause_evt.set()
+        self.seq_stop_evt.clear()
+        self.seq_pause_evt.set()
 
         def _reset_queue():
             try:
@@ -494,11 +786,16 @@ class DobotCore:
                 steps = list(self.sequence)
                 i = 0
                 while i < len(steps):
-                    if self.seq_stop_evt.is_set(): return
+                    if self.seq_stop_evt.is_set():
+                        return
                     self.seq_pause_evt.wait()
-                    if self.seq_stop_evt.is_set(): return
-                    self.seq_current = i; self._push_seq_state()
-                    self.logger.info(f"Step {i+1}/{len(steps)}: {step_label(steps[i])}")
+                    if self.seq_stop_evt.is_set():
+                        return
+                    self.seq_current = i
+                    self._push_seq_state()
+                    self.logger.info(
+                        f"Step {i + 1}/{len(steps)}: {step_label(steps[i])}"
+                    )
                     self._seq_jump = None
                     self._seq_exec(steps[i])
                     if self._seq_jump is not None:
@@ -506,50 +803,86 @@ class DobotCore:
                         i = self._seq_jump
                     else:
                         i += 1
-                if not self.seq_looping: break
+                if not self.seq_looping:
+                    break
                 _reset_queue()
         except Exception as e:
             self.logger.error(f"Playback error at step {self.seq_current + 1}: {e}")
         finally:
-            self.seq_playing = False; self.seq_paused = False; self.seq_current = -1
+            self.seq_playing = False
+            self.seq_paused = False
+            self.seq_current = -1
             self._push_seq_state()
 
     def _seq_exec(self, step):
         t, p = step["type"], step["params"]
         try:
-            if self.device.get_alarms(): self.device.clear_alarms()
-        except Exception: pass
+            if self.device.get_alarms():
+                self.device.clear_alarms()
+        except Exception:
+            pass
 
         if t == "move_to":
-            self._seq_wait(self.device.move_to(p["x"], p["y"], p["z"], p["r"], wait=False))
+            if p.get("speed"):
+                self.device.speed(p["speed"], 100)  # Use default acceleration
+            self._seq_wait(
+                self.device.move_to(p["x"], p["y"], p["z"], p["r"], wait=False)
+            )
         elif t == "move_rel":
+            if p.get("speed"):
+                self.device.speed(p["speed"], 100)  # Use default acceleration
             c = self.device.get_pose().position
-            self._seq_wait(self.device.move_to(
-                c.x + p["x"], c.y + p["y"], c.z + p["z"], c.r + p["r"], wait=False))
-        elif t == "suction":  self.device.suck(p["on"]); time.sleep(0.3)
-        elif t == "gripper":  self.device.grip(p["on"]); time.sleep(0.3)
-        elif t == "wait":     self.seq_stop_evt.wait(timeout=p["seconds"])
-        elif t == "home":     self._seq_wait(self.device.home())
-        elif t == "speed":    self.device.speed(p["velocity"], p["acceleration"])
-        elif t == "set_io":   self.device.set_io(p["address"], p["state"])
+            self._seq_wait(
+                self.device.move_to(
+                    c.x + p["x"], c.y + p["y"], c.z + p["z"], c.r + p["r"], wait=False
+                )
+            )
+        elif t == "suction":
+            self.device.suck(p["on"])
+            time.sleep(0.3)
+        elif t == "gripper":
+            self.device.grip(p["on"])
+            time.sleep(0.3)
+        elif t == "wait":
+            self.seq_stop_evt.wait(timeout=p["seconds"])
+        elif t == "home":
+            self._seq_wait(self.device.home())
+        elif t == "speed":
+            self.device.speed(p["velocity"], p["acceleration"])
+        elif t == "set_io":
+            self.device.set_io(p["address"], p["state"])
         elif t == "conveyor_belt":
             spd = p["speed"]
-            self.conv_running   = spd > 0
+            self.conv_running = spd > 0
             self.conv_direction = p["direction"]
             self.conv_interface = p["interface"]
-            hub.push({"type": "conveyor", "running": self.conv_running,
-                      "speed": spd, "direction": p["direction"], "interface": p["interface"]})
+            hub.push(
+                {
+                    "type": "conveyor",
+                    "running": self.conv_running,
+                    "speed": spd,
+                    "direction": p["direction"],
+                    "interface": p["interface"],
+                }
+            )
             self.device.conveyor_belt(spd, p["direction"], p["interface"])
             if p["duration"] > 0:
                 self.seq_stop_evt.wait(timeout=p["duration"])
                 self.device.conveyor_belt(0, p["direction"], p["interface"])
                 self.conv_running = False
-                hub.push({"type": "conveyor", "running": False,
-                          "speed": 0, "direction": p["direction"], "interface": p["interface"]})
+                hub.push(
+                    {
+                        "type": "conveyor",
+                        "running": False,
+                        "speed": 0,
+                        "direction": p["direction"],
+                        "interface": p["interface"],
+                    }
+                )
         elif t == "color_branch":
             _PORTS = [Dobot.PORT_GP1, Dobot.PORT_GP2, Dobot.PORT_GP4, Dobot.PORT_GP5]
             port = _PORTS[min(max(int(p.get("port", 1)), 0), 3)]
-            rgb  = [False, False, False]
+            rgb = [False, False, False]
             if self._dev_lock.acquire(timeout=2.0):
                 try:
                     if self._color_enabled != port:
@@ -561,20 +894,32 @@ class DobotCore:
                     self.logger.warning(f"Color read: {e}")
                 finally:
                     self._dev_lock.release()
-            detected = "/".join(c for c, v in [("R",rgb[0]),("G",rgb[1]),("B",rgb[2])] if v) or "none"
+            detected = (
+                "/".join(
+                    c for c, v in [("R", rgb[0]), ("G", rgb[1]), ("B", rgb[2])] if v
+                )
+                or "none"
+            )
             target = int(p.get("on_none", 0))
-            if   rgb[0] and int(p.get("on_red",   0)) > 0: target = int(p["on_red"])
-            elif rgb[1] and int(p.get("on_green", 0)) > 0: target = int(p["on_green"])
-            elif rgb[2] and int(p.get("on_blue",  0)) > 0: target = int(p["on_blue"])
-            self.logger.info(f"Color: {detected} → {'step '+str(target) if target > 0 else 'continue'}")
+            if rgb[0] and int(p.get("on_red", 0)) > 0:
+                target = int(p["on_red"])
+            elif rgb[1] and int(p.get("on_green", 0)) > 0:
+                target = int(p["on_green"])
+            elif rgb[2] and int(p.get("on_blue", 0)) > 0:
+                target = int(p["on_blue"])
+            self.logger.info(
+                f"Color: {detected} → {'step ' + str(target) if target > 0 else 'continue'}"
+            )
             if target > 0:
-                self._seq_jump = target - 1   # stored as 1-based; convert to 0-based index
+                self._seq_jump = (
+                    target - 1
+                )  # stored as 1-based; convert to 0-based index
         elif t == "wait_for_color":
             _PORTS = [Dobot.PORT_GP1, Dobot.PORT_GP2, Dobot.PORT_GP4, Dobot.PORT_GP5]
-            port    = _PORTS[min(max(int(p.get("port", 1)), 0), 3)]
-            want_r  = bool(p.get("wait_r", False))
-            want_g  = bool(p.get("wait_g", False))
-            want_b  = bool(p.get("wait_b", False))
+            port = _PORTS[min(max(int(p.get("port", 1)), 0), 3)]
+            want_r = bool(p.get("wait_r", False))
+            want_g = bool(p.get("wait_g", False))
+            want_b = bool(p.get("wait_b", False))
             timeout = float(p.get("timeout", 10.0))
             deadline = time.time() + timeout if timeout > 0 else None
             # enable once
@@ -590,58 +935,146 @@ class DobotCore:
                     self._dev_lock.release()
             while not self.seq_stop_evt.is_set():
                 if deadline and time.time() > deadline:
-                    self.logger.warning("wait_for_color timed out"); break
+                    self.logger.warning("wait_for_color timed out")
+                    break
                 if self._dev_lock.acquire(blocking=False):
                     try:
                         rgb = self.device.get_color(port=port)
-                        if (want_r and rgb[0]) or (want_g and rgb[1]) or (want_b and rgb[2]):
-                            detected = "/".join(c for c,v in [("R",rgb[0]),("G",rgb[1]),("B",rgb[2])] if v)
-                            self.logger.info(f"Color detected: {detected}"); break
-                    except Exception: pass
+                        if (
+                            (want_r and rgb[0])
+                            or (want_g and rgb[1])
+                            or (want_b and rgb[2])
+                        ):
+                            detected = "/".join(
+                                c
+                                for c, v in [
+                                    ("R", rgb[0]),
+                                    ("G", rgb[1]),
+                                    ("B", rgb[2]),
+                                ]
+                                if v
+                            )
+                            self.logger.info(f"Color detected: {detected}")
+                            break
+                    except Exception:
+                        pass
                     finally:
                         self._dev_lock.release()
                 self.seq_stop_evt.wait(timeout=0.1)
         elif t == "move_to_named":
             name = p.get("name", "")
-            pos  = self.named_positions.get(name)
+            pos = self.named_positions.get(name)
             if not pos:
-                self.logger.error(f"Named position '{name}' not found"); return
-            self._seq_wait(self.device.move_to(
-                pos["x"] + p.get("dx", 0),
-                pos["y"] + p.get("dy", 0),
-                pos["z"] + p.get("dz", 0),
-                pos["r"] + p.get("dr", 0),
-                wait=False))
+                self.logger.error(f"Named position '{name}' not found")
+                return
+            if p.get("speed"):
+                self.device.speed(p["speed"], 100)  # Use default acceleration
+            self._seq_wait(
+                self.device.move_to(
+                    pos["x"] + p.get("dx", 0),
+                    pos["y"] + p.get("dy", 0),
+                    pos["z"] + p.get("dz", 0),
+                    pos["r"] + p.get("dr", 0),
+                    wait=False,
+                )
+            )
         elif t == "conveyor_belt_distance":
-            self.conv_running   = True
+            self.conv_running = True
             self.conv_direction = p["direction"]
             self.conv_interface = p["interface"]
-            hub.push({"type": "conveyor", "running": True,
-                      "speed": p["speed"], "direction": p["direction"], "interface": p["interface"]})
+            hub.push(
+                {
+                    "type": "conveyor",
+                    "running": True,
+                    "speed": p["speed"],
+                    "direction": p["direction"],
+                    "interface": p["interface"],
+                }
+            )
             self.device.conveyor_belt_distance(
-                p["speed"], p["distance"], p["direction"], p["interface"])
+                p["speed"], p["distance"], p["direction"], p["interface"]
+            )
             self.conv_running = False
-            hub.push({"type": "conveyor", "running": False,
-                      "speed": 0, "direction": p["direction"], "interface": p["interface"]})
+            hub.push(
+                {
+                    "type": "conveyor",
+                    "running": False,
+                    "speed": 0,
+                    "direction": p["direction"],
+                    "interface": p["interface"],
+                }
+            )
+        elif t == "wait_io":
+            address = p.get("address", 1)
+            target_state = p.get("state", True)
+            timeout = p.get("timeout", 0)  # 0 = no timeout
+            deadline = time.time() + timeout if timeout > 0 else None
+            self.logger.info(
+                f"Waiting for IO #{address} {'HIGH' if target_state else 'LOW'}..."
+            )
+            while not self.seq_stop_evt.is_set():
+                try:
+                    current_state = self.device.get_io(address)
+                    if current_state == target_state:
+                        self.logger.info(f"IO #{address} condition met")
+                        break
+                except Exception as e:
+                    self.logger.warning(f"IO read error: {e}")
+                if deadline and time.time() > deadline:
+                    self.logger.warning(f"IO wait timeout on #{address}")
+                    break
+                self.seq_stop_evt.wait(timeout=0.1)
+        elif t == "run_sequence":
+            filename = p.get("filename", "")
+            if not filename.endswith(".json"):
+                filename += ".json"
+            seq_path = os.path.join(SEQUENCES_DIR, filename)
+            if os.path.exists(seq_path):
+                try:
+                    with open(seq_path) as f:
+                        sub_data = json.load(f)
+                    sub_steps = sub_data.get("steps", [])
+                    self.logger.info(
+                        f"Running sub-sequence '{filename}' ({len(sub_steps)} steps)"
+                    )
+                    for sub_step in sub_steps:
+                        if self.seq_stop_evt.is_set():
+                            break
+                        self.seq_pause_evt.wait()
+                        if self.seq_stop_evt.is_set():
+                            break
+                        self._seq_exec(sub_step)
+                except Exception as e:
+                    self.logger.error(f"Sub-sequence '{filename}' failed: {e}")
+            else:
+                self.logger.error(f"Sub-sequence file not found: {filename}")
+        elif t == "loop_n":
+            count = p.get("count", 1)
+            self.logger.info(f"Starting loop: {count} iterations")
 
     def _seq_wait(self, cmd_idx):
-        if cmd_idx is None: return
+        if cmd_idx is None:
+            return
         self.seq_stop_evt.wait(timeout=0.15)
-        if self.seq_stop_evt.is_set(): return
+        if self.seq_stop_evt.is_set():
+            return
         timeout = time.time() + 120
         while not self.seq_stop_evt.is_set():
             try:
-                if self.device._get_queued_cmd_current_index() >= cmd_idx: return
-            except Exception: return
+                if self.device._get_queued_cmd_current_index() >= cmd_idx:
+                    return
+            except Exception:
+                return
             if time.time() > timeout:
-                self.logger.warning("Step timed out"); return
+                self.logger.warning("Step timed out")
+                return
             self.seq_stop_evt.wait(timeout=0.1)
 
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 
 core = DobotCore()
-app  = Flask(__name__)
+app = Flask(__name__)
 
 
 @app.route("/")
@@ -676,45 +1109,62 @@ def events():
 
 # ── API routes ────────────────────────────────────────────────────────────────
 
-def ok(): return jsonify(ok=True)
+
+def ok():
+    return jsonify(ok=True)
 
 
 @app.post("/api/refresh")
 def api_refresh():
-    core.refresh_ports(); return ok()
+    core.refresh_ports()
+    return ok()
+
 
 @app.post("/api/connect")
 def api_connect():
     d = request.get_json(force=True) or {}
-    core.connect(d.get("port")); return ok()
+    core.connect(d.get("port"))
+    return ok()
+
 
 @app.post("/api/disconnect")
 def api_disconnect():
-    core.disconnect(); return ok()
+    core.disconnect()
+    return ok()
+
 
 @app.post("/api/home")
 def api_home():
-    core.cmd_home(); return ok()
+    core.cmd_home()
+    return ok()
+
 
 @app.post("/api/clear_alarms")
 def api_clear_alarms():
-    core.cmd_clear_alarms(); return ok()
+    core.cmd_clear_alarms()
+    return ok()
+
 
 @app.post("/api/move_to")
 def api_move_to():
     d = request.json
-    core.cmd_move_to(d["x"], d["y"], d["z"], d["r"]); return ok()
+    core.cmd_move_to(d["x"], d["y"], d["z"], d["r"])
+    return ok()
+
 
 @app.post("/api/jog_step")
 def api_jog_step():
     d = request.json
-    core.cmd_jog_step(d["axis"], d["sign"], d["step"]); return ok()
+    core.cmd_jog_step(d["axis"], d["sign"], d["step"])
+    return ok()
+
 
 @app.post("/api/jog")
 def api_jog():
     d = request.json
     core.handle_jog(d["vx"], d["vy"], d["vz"], d["speed"])
     return "", 204
+
 
 @app.post("/api/vacuum")
 def api_vacuum():
@@ -723,64 +1173,92 @@ def api_vacuum():
     core.set_vacuum(on)
     return jsonify(on=core.vacuum_on)
 
+
 @app.post("/api/conveyor")
 def api_conveyor():
     d = request.json
-    core.cmd_conveyor(d["speed"], d["direction"], d["interface"]); return ok()
+    core.cmd_conveyor(d["speed"], d["direction"], d["interface"])
+    return ok()
+
 
 # Sequence
 @app.post("/api/sequence/insert")
 def api_seq_insert():
-    d = request.json; core.seq_insert(d["idx"], d["step"]); return ok()
+    d = request.json
+    core.seq_insert(d["idx"], d["step"])
+    return ok()
+
 
 @app.delete("/api/sequence/<int:idx>")
 def api_seq_delete(idx):
-    core.seq_delete(idx); return ok()
+    core.seq_delete(idx)
+    return ok()
+
 
 @app.put("/api/sequence/<int:idx>")
 def api_seq_update(idx):
-    core.seq_update(idx, request.json); return ok()
+    core.seq_update(idx, request.json)
+    return ok()
+
 
 @app.post("/api/sequence/move")
 def api_seq_move():
-    d = request.json; core.seq_move(d["idx"], d["delta"]); return ok()
+    d = request.json
+    core.seq_move(d["idx"], d["delta"])
+    return ok()
+
 
 @app.post("/api/sequence/<int:idx>/dup")
 def api_seq_dup(idx):
-    core.seq_dup(idx); return ok()
+    core.seq_dup(idx)
+    return ok()
+
 
 @app.post("/api/sequence/clear")
 def api_seq_clear():
-    core.seq_clear(); return ok()
+    core.seq_clear()
+    return ok()
+
 
 @app.post("/api/sequence/save")
 def api_seq_save():
-    core.seq_save(request.json["name"]); return ok()
+    core.seq_save(request.json["name"])
+    return ok()
+
 
 @app.get("/api/sequence/files")
 def api_seq_files():
     return jsonify(files=core.seq_files())
+
 
 @app.post("/api/sequence/load")
 def api_seq_load():
     name = core.seq_load(request.json["filename"])
     return jsonify(ok=name is not None, name=name, steps=core.sequence)
 
+
 @app.post("/api/sequence/play")
 def api_seq_play():
-    core.seq_play(); return ok()
+    core.seq_play()
+    return ok()
+
 
 @app.post("/api/sequence/pause")
 def api_seq_pause():
-    core.seq_pause_toggle(); return ok()
+    core.seq_pause_toggle()
+    return ok()
+
 
 @app.post("/api/sequence/stop")
 def api_seq_stop():
-    core.seq_stop(); return ok()
+    core.seq_stop()
+    return ok()
+
 
 @app.post("/api/sequence/loop")
 def api_seq_loop():
-    looping = core.seq_loop_toggle(); return jsonify(looping=looping)
+    looping = core.seq_loop_toggle()
+    return jsonify(looping=looping)
 
 
 _PORT_MAP = {
@@ -790,11 +1268,12 @@ _PORT_MAP = {
     "GP5": Dobot.PORT_GP5,
 }
 
+
 @app.post("/api/color_sensor")
 def api_color_sensor():
     if not core.is_connected:
         return jsonify(error="Not connected"), 400
-    d    = request.get_json(force=True) or {}
+    d = request.get_json(force=True) or {}
     port = _PORT_MAP.get(d.get("port", "GP2"), Dobot.PORT_GP2)
     try:
         if core._color_enabled != port:
@@ -807,11 +1286,12 @@ def api_color_sensor():
         core._color_enabled = None
         return jsonify(error=str(e)), 500
 
+
 @app.post("/api/ir_sensor")
 def api_ir_sensor():
     if not core.is_connected:
         return jsonify(error="Not connected"), 400
-    d    = request.get_json(force=True) or {}
+    d = request.get_json(force=True) or {}
     port = _PORT_MAP.get(d.get("port", "GP4"), Dobot.PORT_GP4)
     try:
         if core._ir_enabled != port:
@@ -829,6 +1309,7 @@ def api_ir_sensor():
 def api_positions_list():
     return jsonify(positions=core.named_positions)
 
+
 @app.post("/api/positions")
 def api_positions_save():
     d = request.get_json(force=True) or {}
@@ -842,18 +1323,22 @@ def api_positions_save():
     core.save_named_position(name, x, y, z, r)
     return ok()
 
+
 @app.delete("/api/positions/<name>")
 def api_positions_delete(name):
     core.delete_named_position(name)
     return ok()
+
 
 @app.post("/api/positions/<name>/go")
 def api_positions_go(name):
     d = request.get_json(force=True) or {}
     core.go_named_position(
         name,
-        float(d.get("dx", 0)), float(d.get("dy", 0)),
-        float(d.get("dz", 0)), float(d.get("dr", 0)),
+        float(d.get("dx", 0)),
+        float(d.get("dy", 0)),
+        float(d.get("dz", 0)),
+        float(d.get("dr", 0)),
     )
     return ok()
 

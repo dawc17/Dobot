@@ -8,59 +8,60 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional, List
-from serial.tools import list_ports
-from pydobotplus import Dobot
+from typing import List, Optional
+
 import pyray as rl
+from pydobotplus import Dobot
 from pyray import *
+from serial.tools import list_ports
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-C_BG         = Color(22,  22,  30,  255)
-C_PANEL      = Color(32,  32,  44,  255)
-C_PANEL_DARK = Color(26,  26,  36,  255)
-C_BORDER     = Color(52,  52,  70,  255)
-C_SEP        = Color(48,  48,  65,  255)
-C_TEXT       = Color(225, 225, 235, 255)
-C_DIM        = Color(140, 140, 158, 255)
-C_MUTED      = Color(82,  82,  100, 255)
-C_ACCENT     = Color(65,  125, 195, 255)
-C_ACCENT_H   = Color(85,  145, 215, 255)
-C_ACCENT_P   = Color(48,  105, 172, 255)
-C_DANGER     = Color(175, 58,  58,  255)
-C_DANGER_H   = Color(198, 75,  75,  255)
-C_DANGER_P   = Color(150, 42,  42,  255)
-C_SUCCESS    = Color(48,  172, 95,  255)
-C_SUCCESS_H  = Color(65,  192, 112, 255)
-C_TRACK      = Color(45,  45,  60,  255)
-C_THUMB      = Color(85,  135, 190, 255)
-C_THUMB_A    = Color(108, 160, 215, 255)
-C_OK         = Color(48,  195, 98,  255)
-C_BAD        = Color(195, 68,  68,  255)
-C_WARN       = Color(205, 158, 52,  255)
-C_ERR        = Color(215, 75,  75,  255)
+C_BG = Color(22, 22, 30, 255)
+C_PANEL = Color(32, 32, 44, 255)
+C_PANEL_DARK = Color(26, 26, 36, 255)
+C_BORDER = Color(52, 52, 70, 255)
+C_SEP = Color(48, 48, 65, 255)
+C_TEXT = Color(225, 225, 235, 255)
+C_DIM = Color(140, 140, 158, 255)
+C_MUTED = Color(82, 82, 100, 255)
+C_ACCENT = Color(65, 125, 195, 255)
+C_ACCENT_H = Color(85, 145, 215, 255)
+C_ACCENT_P = Color(48, 105, 172, 255)
+C_DANGER = Color(175, 58, 58, 255)
+C_DANGER_H = Color(198, 75, 75, 255)
+C_DANGER_P = Color(150, 42, 42, 255)
+C_SUCCESS = Color(48, 172, 95, 255)
+C_SUCCESS_H = Color(65, 192, 112, 255)
+C_TRACK = Color(45, 45, 60, 255)
+C_THUMB = Color(85, 135, 190, 255)
+C_THUMB_A = Color(108, 160, 215, 255)
+C_OK = Color(48, 195, 98, 255)
+C_BAD = Color(195, 68, 68, 255)
+C_WARN = Color(205, 158, 52, 255)
+C_ERR = Color(215, 75, 75, 255)
 
 # ── Layout ────────────────────────────────────────────────────────────────────
-W, H      = 1280, 860
-PAD       = 12
-HDR_H     = 96
-COL_W     = 450
-COL_RX    = PAD + COL_W + PAD        # 474
-COL_RW    = 298                       # narrowed for sequence panel
-SEQ_X     = COL_RX + COL_RW + PAD    # 784
-SEQ_W     = W - SEQ_X - PAD          # 484
-LOG_Y     = 650
-LOG_H     = H - LOG_Y - PAD
-ROUND     = 0.12
-FSM       = 13
-FMD       = 15
-FLG       = 17
-BTN_H     = 30
-INP_H     = 28
+W, H = 1280, 860
+PAD = 12
+HDR_H = 96
+COL_W = 450
+COL_RX = PAD + COL_W + PAD  # 474
+COL_RW = 298  # narrowed for sequence panel
+SEQ_X = COL_RX + COL_RW + PAD  # 784
+SEQ_W = W - SEQ_X - PAD  # 484
+LOG_Y = 650
+LOG_H = H - LOG_Y - PAD
+ROUND = 0.12
+FSM = 13
+FMD = 15
+FLG = 17
+BTN_H = 30
+INP_H = 28
 
 # Sequence list geometry
-SEQ_LIST_Y  = 226
-SEQ_LIST_H  = 248
-SEQ_ROW_H   = 28
+SEQ_LIST_Y = 226
+SEQ_LIST_H = 248
+SEQ_ROW_H = 28
 SEQ_MAX_VIS = SEQ_LIST_H // SEQ_ROW_H  # 8
 
 # Sequences directory
@@ -69,16 +70,27 @@ SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequen
 # ── Step helpers ──────────────────────────────────────────────────────────────
 
 STEP_TYPES = [
-    "move_to", "move_rel", "suction", "gripper",
-    "wait", "home", "speed", "set_io",
-    "conveyor_belt", "conveyor_belt_distance",
+    "move_to",
+    "move_rel",
+    "suction",
+    "gripper",
+    "wait",
+    "home",
+    "speed",
+    "set_io",
+    "conveyor_belt",
+    "conveyor_belt_distance",
 ]
 
 STEP_TYPE_COLORS = {
-    "move_to": C_ACCENT, "move_rel": C_ACCENT_H,
-    "suction": C_SUCCESS, "gripper": C_SUCCESS_H,
-    "wait": C_WARN, "home": C_DIM,
-    "speed": C_THUMB, "set_io": C_ERR,
+    "move_to": C_ACCENT,
+    "move_rel": C_ACCENT_H,
+    "suction": C_SUCCESS,
+    "gripper": C_SUCCESS_H,
+    "wait": C_WARN,
+    "home": C_DIM,
+    "speed": C_THUMB,
+    "set_io": C_ERR,
     "conveyor_belt": Color(205, 128, 52, 255),
     "conveyor_belt_distance": Color(215, 100, 40, 255),
 }
@@ -86,18 +98,26 @@ STEP_TYPE_COLORS = {
 
 def step_label(step: dict) -> str:
     t, p = step["type"], step["params"]
-    if t == "move_to":   return f"Move To  ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
-    if t == "move_rel":  return f"Move Rel ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
-    if t == "suction":   return f"Suction {'ON' if p['on'] else 'OFF'}"
-    if t == "gripper":   return f"Gripper {'ON' if p['on'] else 'OFF'}"
-    if t == "wait":      return f"Wait {p['seconds']:.1f}s"
-    if t == "home":      return "Home"
-    if t == "speed":     return f"Speed {p['velocity']:.0f} mm/s"
-    if t == "set_io":    return f"IO #{p['address']} {'ON' if p['state'] else 'OFF'}"
+    if t == "move_to":
+        return f"Move To  ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
+    if t == "move_rel":
+        return f"Move Rel ({p['x']:.1f}, {p['y']:.1f}, {p['z']:.1f}, {p['r']:.1f})"
+    if t == "suction":
+        return f"Suction {'ON' if p['on'] else 'OFF'}"
+    if t == "gripper":
+        return f"Gripper {'ON' if p['on'] else 'OFF'}"
+    if t == "wait":
+        return f"Wait {p['seconds']:.1f}s"
+    if t == "home":
+        return "Home"
+    if t == "speed":
+        return f"Speed {p['velocity']:.0f} mm/s"
+    if t == "set_io":
+        return f"IO #{p['address']} {'ON' if p['state'] else 'OFF'}"
     if t == "conveyor_belt":
         d = "FWD" if p["direction"] > 0 else "REV"
         dur = f" {p['duration']:.1f}s" if p["duration"] > 0 else " cont."
-        return f"Belt {int(p['speed']*100)}% {d}{dur}"
+        return f"Belt {int(p['speed'] * 100)}% {d}{dur}"
     if t == "conveyor_belt_distance":
         d = "FWD" if p["direction"] > 0 else "REV"
         return f"Belt {p['distance']:.0f}mm@{p['speed']:.0f}mm/s {d}"
@@ -119,14 +139,18 @@ class LogHandler(logging.Handler):
         self._cap = cap
 
     def emit(self, record):
-        self.entries.append(LogEntry(record.levelname, self.format(record), time.strftime("%H:%M:%S")))
+        self.entries.append(
+            LogEntry(record.levelname, self.format(record), time.strftime("%H:%M:%S"))
+        )
         if len(self.entries) > self._cap:
             self.entries.pop(0)
 
 
 # ── Widgets ───────────────────────────────────────────────────────────────────
 
-def _rrec(x, y, w, h): return Rectangle(float(x), float(y), float(w), float(h))
+
+def _rrec(x, y, w, h):
+    return Rectangle(float(x), float(y), float(w), float(h))
 
 
 def draw_panel(x, y, w, h, title=""):
@@ -142,21 +166,24 @@ def dlabel(text, x, y, color=None, size=FSM):
 
 
 class Button:
-    NORMAL  = "normal"
-    DANGER  = "danger"
+    NORMAL = "normal"
+    DANGER = "danger"
     SUCCESS = "success"
-    GHOST   = "ghost"
+    GHOST = "ghost"
 
     def __init__(self, x, y, w, h, text, style=NORMAL):
-        self.rect  = _rrec(x, y, w, h)
-        self.text  = text
+        self.rect = _rrec(x, y, w, h)
+        self.text = text
         self.style = style
         self.enabled = True
 
     def _cols(self):
-        if self.style == self.DANGER:  return C_DANGER,  C_DANGER_H,  C_DANGER_P
-        if self.style == self.SUCCESS: return C_SUCCESS,  C_SUCCESS_H, C_SUCCESS
-        if self.style == self.GHOST:   return Color(0,0,0,0), C_BORDER, C_PANEL_DARK
+        if self.style == self.DANGER:
+            return C_DANGER, C_DANGER_H, C_DANGER_P
+        if self.style == self.SUCCESS:
+            return C_SUCCESS, C_SUCCESS_H, C_SUCCESS
+        if self.style == self.GHOST:
+            return Color(0, 0, 0, 0), C_BORDER, C_PANEL_DARK
         return C_ACCENT, C_ACCENT_H, C_ACCENT_P
 
     def draw(self):
@@ -164,14 +191,21 @@ class Button:
         hov = check_collision_point_rec(mp, self.rect) and self.enabled
         prs = hov and is_mouse_button_down(MOUSE_BUTTON_LEFT)
         b, h_, a = self._cols()
-        col = (Color(40, 40, 52, 255) if not self.enabled
-               else a if prs else h_ if hov else b)
+        col = (
+            Color(40, 40, 52, 255)
+            if not self.enabled
+            else a
+            if prs
+            else h_
+            if hov
+            else b
+        )
         draw_rectangle_rounded(self.rect, 0.22, 4, col)
         if self.style == self.GHOST:
             lc = C_DIM if hov else C_BORDER
             draw_rectangle_rounded_lines_ex(self.rect, 0.22, 4, 1.0, lc)
         tw = measure_text(self.text, FMD)
-        tx = int(self.rect.x + (self.rect.width  - tw) / 2)
+        tx = int(self.rect.x + (self.rect.width - tw) / 2)
         ty = int(self.rect.y + (self.rect.height - FMD) / 2)
         draw_text(self.text, tx, ty, FMD, C_TEXT if self.enabled else C_MUTED)
 
@@ -179,8 +213,9 @@ class Button:
         if not self.enabled:
             return False
         mp = get_mouse_position()
-        return (check_collision_point_rec(mp, self.rect)
-                and is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
+        return check_collision_point_rec(mp, self.rect) and is_mouse_button_pressed(
+            MOUSE_BUTTON_LEFT
+        )
 
     def move(self, x, y):
         self.rect.x, self.rect.y = float(x), float(y)
@@ -194,7 +229,8 @@ class Slider:
         self.auto_center = auto_center
         self.dragging = False
 
-    def _n(self): return (self.value - self.mn) / (self.mx - self.mn)
+    def _n(self):
+        return (self.value - self.mn) / (self.mx - self.mn)
 
     def draw(self):
         draw_rectangle_rounded(_rrec(self.x, self.y, self.w, self.h), 1.0, 4, C_TRACK)
@@ -205,21 +241,28 @@ class Slider:
         tx = self.x + self._n() * self.w
         tr = _rrec(tx - 9, self.y - 8, 18, self.h + 16)
         mp = get_mouse_position()
-        if is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and check_collision_point_rec(mp, tr):
+        if is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and check_collision_point_rec(
+            mp, tr
+        ):
             self.dragging = True
         if is_mouse_button_released(MOUSE_BUTTON_LEFT):
             self.dragging = False
             if self.auto_center:
                 self.value = 0
         if self.dragging:
-            self.value = self.mn + max(0.0, min(1.0, (mp.x - self.x) / self.w)) * (self.mx - self.mn)
+            self.value = self.mn + max(0.0, min(1.0, (mp.x - self.x) / self.w)) * (
+                self.mx - self.mn
+            )
 
         tc = C_THUMB_A if self.dragging else C_THUMB
         draw_circle(int(tx), int(self.y + self.h / 2), 9, tc)
         draw_circle_lines(int(tx), int(self.y + self.h / 2), 9, C_BORDER)
-        draw_text(f"{self.value:.0f}", int(self.x + self.w + 10), int(self.y - 4), FMD, C_TEXT)
+        draw_text(
+            f"{self.value:.0f}", int(self.x + self.w + 10), int(self.y - 4), FMD, C_TEXT
+        )
 
-    def get(self): return self.value
+    def get(self):
+        return self.value
 
 
 class InputField:
@@ -233,10 +276,12 @@ class InputField:
         mp = get_mouse_position()
         if is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
             self.active = check_collision_point_rec(mp, self.rect)
-        bg  = Color(42, 42, 57, 255) if self.active else Color(34, 34, 47, 255)
+        bg = Color(42, 42, 57, 255) if self.active else Color(34, 34, 47, 255)
         brd = C_ACCENT if self.active else C_BORDER
         draw_rectangle_rounded(self.rect, 0.2, 4, bg)
-        draw_rectangle_rounded_lines_ex(self.rect, 0.2, 4, 1.5 if self.active else 1.0, brd)
+        draw_rectangle_rounded_lines_ex(
+            self.rect, 0.2, 4, 1.5 if self.active else 1.0, brd
+        )
         if self.active:
             k = get_char_pressed()
             while k > 0:
@@ -245,13 +290,24 @@ class InputField:
                 k = get_char_pressed()
             if is_key_pressed(KEY_BACKSPACE) and self.text:
                 self.text = self.text[:-1]
-        draw_text(self.text, int(self.rect.x + 8), int(self.rect.y + (INP_H - FMD) / 2), FMD, C_TEXT)
+        draw_text(
+            self.text,
+            int(self.rect.x + 8),
+            int(self.rect.y + (INP_H - FMD) / 2),
+            FMD,
+            C_TEXT,
+        )
         if self.active and int(get_time() * 2) % 2 == 0:
             cx = int(self.rect.x + 8 + measure_text(self.text, FMD))
-            draw_line(cx, int(self.rect.y + 5), cx, int(self.rect.y + INP_H - 5), C_TEXT)
+            draw_line(
+                cx, int(self.rect.y + 5), cx, int(self.rect.y + INP_H - 5), C_TEXT
+            )
 
-    def get(self):  return self.text
-    def set(self, v): self.text = str(v)
+    def get(self):
+        return self.text
+
+    def set(self, v):
+        self.text = str(v)
 
 
 class Joystick:
@@ -265,10 +321,20 @@ class Joystick:
         draw_circle_lines(int(self.cx), int(self.cy), self.r, C_BORDER)
         for rr in (self.r * 0.5, self.r * 0.85):
             draw_circle_lines(int(self.cx), int(self.cy), rr, C_SEP)
-        draw_line(int(self.cx), int(self.cy - self.r + 6),
-                  int(self.cx), int(self.cy + self.r - 6), C_SEP)
-        draw_line(int(self.cx - self.r + 6), int(self.cy),
-                  int(self.cx + self.r - 6), int(self.cy), C_SEP)
+        draw_line(
+            int(self.cx),
+            int(self.cy - self.r + 6),
+            int(self.cx),
+            int(self.cy + self.r - 6),
+            C_SEP,
+        )
+        draw_line(
+            int(self.cx - self.r + 6),
+            int(self.cy),
+            int(self.cx + self.r - 6),
+            int(self.cy),
+            C_SEP,
+        )
 
         mp = get_mouse_position()
         in_r = check_collision_point_circle(mp, Vector2(self.cx, self.cy), self.r)
@@ -279,10 +345,12 @@ class Joystick:
             self.vx = self.vy = 0.0
         if self.active:
             dx, dy = mp.x - self.cx, mp.y - self.cy
-            d = (dx*dx + dy*dy) ** 0.5
+            d = (dx * dx + dy * dy) ** 0.5
             max_d = self.r - 16
             if d > max_d:
-                s = max_d / d; dx *= s; dy *= s
+                s = max_d / d
+                dx *= s
+                dy *= s
             self.vx = dx / max_d
             self.vy = dy / max_d
 
@@ -306,15 +374,15 @@ class Joystick:
 
 # ── Main app ──────────────────────────────────────────────────────────────────
 
-class DobotController:
 
+class DobotController:
     def __init__(self):
         init_window(W, H, "Dobot Controller")
         set_target_fps(60)
 
         self.device: Optional[Dobot] = None
         self.is_connected = False
-        self.connecting   = False
+        self.connecting = False
         self.available_ports: List[str] = []
         self.port_index = 0
 
@@ -327,30 +395,30 @@ class DobotController:
         self.log_handler.setFormatter(logging.Formatter("%(message)s"))
         self.logger.addHandler(self.log_handler)
 
-        self.vacuum_on      = False
-        self.conv_running   = False
+        self.vacuum_on = False
+        self.conv_running = False
         self.conv_direction = 1
         self.conv_interface = 0
-        self.jog_step  = 20.0
-        self.last_jog  = (0.0, 0.0, 0.0)
-        self._kb_vx    = 0.0
-        self._kb_vy    = 0.0
+        self.jog_step = 20.0
+        self.last_jog = (0.0, 0.0, 0.0)
+        self._kb_vx = 0.0
+        self._kb_vy = 0.0
         self.alarms: set = set()
         self._jog_lock = threading.Lock()  # serialize jog commands off main thread
 
         # ── Sequence state ────────────────────────────────────────────────────
         self.sequence: List[dict] = []
-        self.seq_selected    = -1
-        self.seq_scroll      = 0
-        self.seq_playing     = False
-        self.seq_paused      = False
-        self.seq_looping     = False
-        self.seq_current     = -1      # step index during playback
-        self.seq_stop_evt    = threading.Event()
-        self.seq_pause_evt   = threading.Event()
-        self.seq_editing     = -1      # step index being edited inline
+        self.seq_selected = -1
+        self.seq_scroll = 0
+        self.seq_playing = False
+        self.seq_paused = False
+        self.seq_looping = False
+        self.seq_current = -1  # step index during playback
+        self.seq_stop_evt = threading.Event()
+        self.seq_pause_evt = threading.Event()
+        self.seq_editing = -1  # step index being edited inline
         self.seq_edit_fields: List[InputField] = []
-        self.seq_load_picker = False   # True when file picker is open
+        self.seq_load_picker = False  # True when file picker is open
         self.seq_files: List[str] = []
         self.seq_file_scroll = 0
 
@@ -365,35 +433,37 @@ class DobotController:
         rx = COL_RX
 
         # ── Header ────────────────────────────────────────────────────────────
-        self.btn_port_prev = Button(lx,               62, 26, 26, "<", Button.GHOST)
+        self.btn_port_prev = Button(lx, 62, 26, 26, "<", Button.GHOST)
         self.btn_port_next = Button(lx + 26 + 108 + 4, 62, 26, 26, ">", Button.GHOST)
         ref_x = lx + 26 + 108 + 4 + 26 + 6
-        self.btn_refresh   = Button(ref_x, 62, 78, 26, "Refresh", Button.GHOST)
-        self.btn_connect   = Button(W - PAD - 88 - PAD - 88, 62, 88, 26, "Connect")
-        self.btn_home      = Button(W - PAD - 88,            62, 88, 26, "Home", Button.GHOST)
+        self.btn_refresh = Button(ref_x, 62, 78, 26, "Refresh", Button.GHOST)
+        self.btn_connect = Button(W - PAD - 88 - PAD - 88, 62, 88, 26, "Connect")
+        self.btn_home = Button(W - PAD - 88, 62, 88, 26, "Home", Button.GHOST)
 
         # ── Move To ───────────────────────────────────────────────────────────
         iw = 95
-        self.inp_x = InputField(lx + 48,       228, iw, "200")
+        self.inp_x = InputField(lx + 48, 228, iw, "200")
         self.inp_y = InputField(lx + 48 + 178, 228, iw, "0")
-        self.inp_z = InputField(lx + 48,       268, iw, "50")
+        self.inp_z = InputField(lx + 48, 268, iw, "50")
         self.inp_r = InputField(lx + 48 + 178, 268, iw, "0")
-        self.btn_use_curr = Button(lx + 8,   306, 148, BTN_H, "Use Current", Button.GHOST)
-        self.btn_move     = Button(lx + 162, 306, 130, BTN_H, "Move To")
+        self.btn_use_curr = Button(lx + 8, 306, 148, BTN_H, "Use Current", Button.GHOST)
+        self.btn_move = Button(lx + 162, 306, 130, BTN_H, "Move To")
 
         # ── Quick Jog ─────────────────────────────────────────────────────────
         sw, sg = 50, 6
         self.step_btns = [
-            (5.0,  Button(lx + 8 + 0*(sw+sg), 404, sw, 26, "5",  Button.GHOST)),
-            (10.0, Button(lx + 8 + 1*(sw+sg), 404, sw, 26, "10", Button.GHOST)),
-            (20.0, Button(lx + 8 + 2*(sw+sg), 404, sw, 26, "20", Button.GHOST)),
-            (50.0, Button(lx + 8 + 3*(sw+sg), 404, sw, 26, "50", Button.GHOST)),
+            (5.0, Button(lx + 8 + 0 * (sw + sg), 404, sw, 26, "5", Button.GHOST)),
+            (10.0, Button(lx + 8 + 1 * (sw + sg), 404, sw, 26, "10", Button.GHOST)),
+            (20.0, Button(lx + 8 + 2 * (sw + sg), 404, sw, 26, "20", Button.GHOST)),
+            (50.0, Button(lx + 8 + 3 * (sw + sg), 404, sw, 26, "50", Button.GHOST)),
         ]
         bw, bh, bg = 66, 30, 5
-        self.jog_row1 = [Button(lx + 8 + i*(bw+bg), 438, bw, bh, t)
-                         for i, t in enumerate(["X −", "X +", "Y −", "Y +"])]
-        self.btn_zm = Button(lx + 8,       476, bw, bh, "Z −")
-        self.btn_zp = Button(lx + 8+bw+bg, 476, bw, bh, "Z +")
+        self.jog_row1 = [
+            Button(lx + 8 + i * (bw + bg), 438, bw, bh, t)
+            for i, t in enumerate(["X −", "X +", "Y −", "Y +"])
+        ]
+        self.btn_zm = Button(lx + 8, 476, bw, bh, "Z −")
+        self.btn_zp = Button(lx + 8 + bw + bg, 476, bw, bh, "Z +")
 
         # ── Joystick (right col) ──────────────────────────────────────────────
         joy_cx = rx + COL_RW // 2
@@ -402,59 +472,88 @@ class DobotController:
 
         # ── Controls (right col) ──────────────────────────────────────────────
         cw = COL_RW - 60
-        self.z_slider     = Slider(rx + 12, 406, cw, -100, 100,  0, auto_center=True)
-        self.speed_slider = Slider(rx + 12, 454, cw,    5, 200, 50)
-        self.btn_vacuum   = Button(rx + 12, 496, 130, BTN_H, "Vacuum OFF")
-        self.btn_clear_alarms = Button(rx + 150, 496, 130, BTN_H, "Clear Alarms", Button.DANGER)
+        self.z_slider = Slider(rx + 12, 406, cw, -100, 100, 0, auto_center=True)
+        self.speed_slider = Slider(rx + 12, 454, cw, 5, 200, 50)
+        self.btn_vacuum = Button(rx + 12, 496, 130, BTN_H, "Vacuum OFF")
+        self.btn_clear_alarms = Button(
+            rx + 150, 496, 130, BTN_H, "Clear Alarms", Button.DANGER
+        )
 
         # ── Sequence panel ────────────────────────────────────────────────────
         sx = SEQ_X
         inner = SEQ_W - 16
-        bw4 = (inner - 3 * 6) // 4   # ~112px per button
+        bw4 = (inner - 3 * 6) // 4  # ~112px per button
 
         # Record buttons row 1 (y=132)
-        self.btn_add_pos  = Button(sx+8,             132, bw4, 26, "+ Position", Button.GHOST)
-        self.btn_add_suck = Button(sx+8+(bw4+6),     132, bw4, 26, "+ Suction",  Button.GHOST)
-        self.btn_add_grip = Button(sx+8+2*(bw4+6),   132, bw4, 26, "+ Gripper",  Button.GHOST)
-        self.btn_add_wait = Button(sx+8+3*(bw4+6),   132, bw4, 26, "+ Wait",     Button.GHOST)
+        self.btn_add_pos = Button(sx + 8, 132, bw4, 26, "+ Position", Button.GHOST)
+        self.btn_add_suck = Button(
+            sx + 8 + (bw4 + 6), 132, bw4, 26, "+ Suction", Button.GHOST
+        )
+        self.btn_add_grip = Button(
+            sx + 8 + 2 * (bw4 + 6), 132, bw4, 26, "+ Gripper", Button.GHOST
+        )
+        self.btn_add_wait = Button(
+            sx + 8 + 3 * (bw4 + 6), 132, bw4, 26, "+ Wait", Button.GHOST
+        )
         # Record buttons row 2 (y=162)
-        self.btn_add_home = Button(sx+8,             162, bw4, 26, "+ Home",     Button.GHOST)
-        self.btn_add_spd  = Button(sx+8+(bw4+6),     162, bw4, 26, "+ Speed",    Button.GHOST)
-        self.btn_add_io   = Button(sx+8+2*(bw4+6),   162, bw4, 26, "+ IO",       Button.GHOST)
-        self.btn_add_rel  = Button(sx+8+3*(bw4+6),   162, bw4, 26, "+ Relative", Button.GHOST)
+        self.btn_add_home = Button(sx + 8, 162, bw4, 26, "+ Home", Button.GHOST)
+        self.btn_add_spd = Button(
+            sx + 8 + (bw4 + 6), 162, bw4, 26, "+ Speed", Button.GHOST
+        )
+        self.btn_add_io = Button(
+            sx + 8 + 2 * (bw4 + 6), 162, bw4, 26, "+ IO", Button.GHOST
+        )
+        self.btn_add_rel = Button(
+            sx + 8 + 3 * (bw4 + 6), 162, bw4, 26, "+ Relative", Button.GHOST
+        )
         # Record buttons row 3 (y=192) — conveyor
         bw2 = (inner - 6) // 2
-        self.btn_add_conv  = Button(sx+8,          192, bw2, 26, "+ Conveyor",  Button.GHOST)
-        self.btn_add_convd = Button(sx+8+(bw2+6),  192, bw2, 26, "+ Conv Dist", Button.GHOST)
+        self.btn_add_conv = Button(sx + 8, 192, bw2, 26, "+ Conveyor", Button.GHOST)
+        self.btn_add_convd = Button(
+            sx + 8 + (bw2 + 6), 192, bw2, 26, "+ Conv Dist", Button.GHOST
+        )
         self.seq_add_btns = [
-            self.btn_add_pos, self.btn_add_suck, self.btn_add_grip, self.btn_add_wait,
-            self.btn_add_home, self.btn_add_spd, self.btn_add_io, self.btn_add_rel,
-            self.btn_add_conv, self.btn_add_convd,
+            self.btn_add_pos,
+            self.btn_add_suck,
+            self.btn_add_grip,
+            self.btn_add_wait,
+            self.btn_add_home,
+            self.btn_add_spd,
+            self.btn_add_io,
+            self.btn_add_rel,
+            self.btn_add_conv,
+            self.btn_add_convd,
         ]
 
         # Edit/reorder bar (y=478)
-        self.btn_del_step = Button(sx+8,           478, bw4, 26, "Delete",    Button.DANGER)
-        self.btn_move_up  = Button(sx+8+(bw4+6),   478, bw4, 26, "Up",        Button.GHOST)
-        self.btn_move_dn  = Button(sx+8+2*(bw4+6), 478, bw4, 26, "Down",      Button.GHOST)
-        self.btn_dup_step = Button(sx+8+3*(bw4+6), 478, bw4, 26, "Duplicate", Button.GHOST)
+        self.btn_del_step = Button(sx + 8, 478, bw4, 26, "Delete", Button.DANGER)
+        self.btn_move_up = Button(sx + 8 + (bw4 + 6), 478, bw4, 26, "Up", Button.GHOST)
+        self.btn_move_dn = Button(
+            sx + 8 + 2 * (bw4 + 6), 478, bw4, 26, "Down", Button.GHOST
+        )
+        self.btn_dup_step = Button(
+            sx + 8 + 3 * (bw4 + 6), 478, bw4, 26, "Duplicate", Button.GHOST
+        )
 
         # Playback controls (y=508)
-        self.btn_seq_play = Button(sx+8,       508, 152, BTN_H, "Play", Button.SUCCESS)
-        self.btn_seq_stop = Button(sx+8+158,   508, 100, BTN_H, "Stop", Button.DANGER)
-        self.btn_seq_loop = Button(sx+8+264,   508, inner-264, BTN_H, "Loop: OFF", Button.GHOST)
+        self.btn_seq_play = Button(sx + 8, 508, 152, BTN_H, "Play", Button.SUCCESS)
+        self.btn_seq_stop = Button(sx + 8 + 158, 508, 100, BTN_H, "Stop", Button.DANGER)
+        self.btn_seq_loop = Button(
+            sx + 8 + 264, 508, inner - 264, BTN_H, "Loop: OFF", Button.GHOST
+        )
 
         # Save/Load bar (y=542)
-        self.btn_seq_save  = Button(sx+8,       542, 72, 26, "Save",  Button.GHOST)
-        self.btn_seq_load  = Button(sx+8+78,    542, 72, 26, "Load",  Button.GHOST)
-        self.btn_seq_clear = Button(sx+8+156,   542, 72, 26, "Clear", Button.DANGER)
-        self.inp_seq_name  = InputField(sx+8+234, 543, inner-234, "untitled")
+        self.btn_seq_save = Button(sx + 8, 542, 72, 26, "Save", Button.GHOST)
+        self.btn_seq_load = Button(sx + 8 + 78, 542, 72, 26, "Load", Button.GHOST)
+        self.btn_seq_clear = Button(sx + 8 + 156, 542, 72, 26, "Clear", Button.DANGER)
+        self.inp_seq_name = InputField(sx + 8 + 234, 543, inner - 234, "untitled")
         self.inp_seq_name.max_len = 30
 
         # ── Conveyor panel (right col, below Z/Speed) ─────────────────────────
         self.conv_speed_slider = Slider(rx + 12, 583, cw, 0, 100, 50)
-        self.btn_conv_dir   = Button(rx + 12,  614,  84, BTN_H, "Forward",  Button.GHOST)
-        self.btn_conv_run   = Button(rx + 102, 614,  84, BTN_H, "Start",    Button.SUCCESS)
-        self.btn_conv_iface = Button(rx + 192, 614,  90, BTN_H, "Iface: 0", Button.GHOST)
+        self.btn_conv_dir = Button(rx + 12, 614, 84, BTN_H, "Forward", Button.GHOST)
+        self.btn_conv_run = Button(rx + 102, 614, 84, BTN_H, "Start", Button.SUCCESS)
+        self.btn_conv_iface = Button(rx + 192, 614, 90, BTN_H, "Iface: 0", Button.GHOST)
 
     # ── Connection ────────────────────────────────────────────────────────────
 
@@ -462,9 +561,12 @@ class DobotController:
         infos = list_ports.comports()
         self.available_ports = [p.device for p in infos]
         if self.available_ports:
-            usb = [p.device for p in infos
-                   if 'USB' in (p.hwid or '').upper()
-                   or 'USB' in (p.description or '').upper()]
+            usb = [
+                p.device
+                for p in infos
+                if "USB" in (p.hwid or "").upper()
+                or "USB" in (p.description or "").upper()
+            ]
             if usb:
                 self.port_index = self.available_ports.index(usb[0])
             self.logger.info(f"Found {len(self.available_ports)} port(s)")
@@ -484,7 +586,7 @@ class DobotController:
                 self.logger.info(f"Connecting to {port}...")
                 self.device = Dobot(port=port)
                 self.is_connected = True
-                self.btn_connect.text  = "Disconnect"
+                self.btn_connect.text = "Disconnect"
                 self.btn_connect.style = Button.DANGER
                 self.logger.info("Connected successfully")
                 self.device.clear_alarms()
@@ -493,7 +595,7 @@ class DobotController:
                 self._start_pos_thread()
             except Exception as e:
                 self.logger.error(f"Connection failed: {e}")
-                self.btn_connect.text  = "Connect"
+                self.btn_connect.text = "Connect"
                 self.btn_connect.style = Button.NORMAL
             finally:
                 self.btn_connect.enabled = True
@@ -503,15 +605,17 @@ class DobotController:
 
     def disconnect(self):
         if self.device:
-            try: self.device.close()
-            except: pass
+            try:
+                self.device.close()
+            except:
+                pass
         self.device = None
         self.is_connected = False
-        self.btn_connect.text  = "Connect"
+        self.btn_connect.text = "Connect"
         self.btn_connect.style = Button.NORMAL
         if self.conv_running:
             self.conv_running = False
-            self.btn_conv_run.text  = "Start"
+            self.btn_conv_run.text = "Start"
             self.btn_conv_run.style = Button.SUCCESS
         self.logger.info("Disconnected")
 
@@ -531,13 +635,17 @@ class DobotController:
             self.alarms = self.device.get_alarms()
             if self.alarms:
                 self.device.clear_alarms()
-                self.logger.warning(f"Cleared alarms: {', '.join(str(a) for a in self.alarms)}")
+                self.logger.warning(
+                    f"Cleared alarms: {', '.join(str(a) for a in self.alarms)}"
+                )
                 self.alarms = set()
         except Exception:
             pass
 
     def cmd_clear_alarms(self):
-        if not self.is_connected: return
+        if not self.is_connected:
+            return
+
         def _do():
             try:
                 self.device.clear_alarms()
@@ -547,6 +655,7 @@ class DobotController:
                 self.logger.info("Alarms cleared, queue reset")
             except Exception as e:
                 self.logger.error(f"Clear alarms failed: {e}")
+
         threading.Thread(target=_do, daemon=True).start()
 
     def _start_pos_thread(self):
@@ -558,6 +667,7 @@ class DobotController:
                 if tick % 4 == 0:  # check alarms every ~2s
                     self._check_alarms()
                 time.sleep(0.5)
+
         threading.Thread(target=_loop, daemon=True).start()
 
     # ── Manual commands ───────────────────────────────────────────────────────
@@ -573,13 +683,16 @@ class DobotController:
             self.logger.error(f"Move failed: {e}")
 
     def cmd_move_to(self):
-        if not self.is_connected: return
+        if not self.is_connected:
+            return
         try:
-            x, y, z, r = (float(f.get()) for f in
-                          (self.inp_x, self.inp_y, self.inp_z, self.inp_r))
+            x, y, z, r = (
+                float(f.get()) for f in (self.inp_x, self.inp_y, self.inp_z, self.inp_r)
+            )
             self.logger.info(f"Move → X{x:.1f} Y{y:.1f} Z{z:.1f} R{r:.1f}")
-            threading.Thread(target=lambda: self._safe_move(x, y, z, r),
-                             daemon=True).start()
+            threading.Thread(
+                target=lambda: self._safe_move(x, y, z, r), daemon=True
+            ).start()
         except ValueError:
             self.logger.error("Invalid coordinate value")
         except Exception as e:
@@ -592,24 +705,28 @@ class DobotController:
         self.inp_r.set(f"{self.pos['R']:.2f}")
 
     def jog_step_move(self, axis, sign):
-        if not self.is_connected: return
-        x = self.pos["X"] + (self.jog_step * sign if axis == 'x' else 0)
-        y = self.pos["Y"] + (self.jog_step * sign if axis == 'y' else 0)
-        z = self.pos["Z"] + (self.jog_step * sign if axis == 'z' else 0)
+        if not self.is_connected:
+            return
+        x = self.pos["X"] + (self.jog_step * sign if axis == "x" else 0)
+        y = self.pos["Y"] + (self.jog_step * sign if axis == "y" else 0)
+        z = self.pos["Z"] + (self.jog_step * sign if axis == "z" else 0)
         r = self.pos["R"]
         arrow = "+" if sign > 0 else "−"
         self.logger.info(f"Step {axis.upper()}{arrow}{self.jog_step:.0f} mm")
-        threading.Thread(target=lambda: self._safe_move(x, y, z, r),
-                         daemon=True).start()
+        threading.Thread(
+            target=lambda: self._safe_move(x, y, z, r), daemon=True
+        ).start()
 
     def toggle_vacuum(self):
-        if not self.is_connected: return
+        if not self.is_connected:
+            return
         try:
             self.vacuum_on = not self.vacuum_on
             state = self.vacuum_on
-            threading.Thread(target=lambda: self.device.suck(state),
-                             daemon=True).start()
-            self.btn_vacuum.text  = "Vacuum ON"  if self.vacuum_on else "Vacuum OFF"
+            threading.Thread(
+                target=lambda: self.device.suck(state), daemon=True
+            ).start()
+            self.btn_vacuum.text = "Vacuum ON" if self.vacuum_on else "Vacuum OFF"
             self.btn_vacuum.style = Button.SUCCESS if self.vacuum_on else Button.NORMAL
             self.logger.info(f"Vacuum {'ON' if self.vacuum_on else 'OFF'}")
         except Exception as e:
@@ -623,17 +740,23 @@ class DobotController:
         threading.Thread(target=self.device.home, daemon=True).start()
 
     def _handle_jog(self):
-        if not (self.is_connected and self.device): return
+        if not (self.is_connected and self.device):
+            return
         vx, vy = self.joystick.vx, self.joystick.vy
         vz = self.z_slider.get() / 100.0
         dz = 0.04
-        if abs(vx) < dz: vx = 0
-        if abs(vy) < dz: vy = 0
-        if abs(vz) < dz: vz = 0
+        if abs(vx) < dz:
+            vx = 0
+        if abs(vy) < dz:
+            vy = 0
+        if abs(vz) < dz:
+            vz = 0
         cur = (round(vx, 3), round(vy, 3), round(vz, 3))
-        if cur == self.last_jog: return
+        if cur == self.last_jog:
+            return
         self.last_jog = cur
         spd = self.speed_slider.get()
+
         # Run serial jog commands off the main/render thread
         def _do_jog():
             if not self._jog_lock.acquire(blocking=False):
@@ -654,6 +777,7 @@ class DobotController:
                 self.logger.error(f"Jog error: {e}")
             finally:
                 self._jog_lock.release()
+
         threading.Thread(target=_do_jog, daemon=True).start()
 
     # ── Sequence: add steps ───────────────────────────────────────────────────
@@ -671,9 +795,17 @@ class DobotController:
             self.seq_scroll = self.seq_selected - SEQ_MAX_VIS + 1
 
     def seq_add_position(self):
-        self._seq_insert({"type": "move_to", "params": {
-            "x": round(self.pos["X"], 2), "y": round(self.pos["Y"], 2),
-            "z": round(self.pos["Z"], 2), "r": round(self.pos["R"], 2)}})
+        self._seq_insert(
+            {
+                "type": "move_to",
+                "params": {
+                    "x": round(self.pos["X"], 2),
+                    "y": round(self.pos["Y"], 2),
+                    "z": round(self.pos["Z"], 2),
+                    "r": round(self.pos["R"], 2),
+                },
+            }
+        )
         p = self.sequence[self.seq_selected]["params"]
         self.logger.info(f"Recorded pos: X{p['x']:.1f} Y{p['y']:.1f} Z{p['z']:.1f}")
 
@@ -701,25 +833,45 @@ class DobotController:
 
     def seq_add_speed(self):
         v = self.speed_slider.get()
-        self._seq_insert({"type": "speed", "params": {"velocity": v, "acceleration": v}})
+        self._seq_insert(
+            {"type": "speed", "params": {"velocity": v, "acceleration": v}}
+        )
 
     def seq_add_io(self):
         self._seq_insert({"type": "set_io", "params": {"address": 1, "state": True}})
 
     def seq_add_rel(self):
-        self._seq_insert({"type": "move_rel", "params": {"x": 0, "y": 0, "z": 0, "r": 0}})
+        self._seq_insert(
+            {"type": "move_rel", "params": {"x": 0, "y": 0, "z": 0, "r": 0}}
+        )
 
     def seq_add_conveyor(self):
         speed = round(self.conv_speed_slider.get() / 100.0, 2)
-        self._seq_insert({"type": "conveyor_belt", "params": {
-            "speed": speed, "direction": self.conv_direction,
-            "interface": self.conv_interface, "duration": 2.0}})
+        self._seq_insert(
+            {
+                "type": "conveyor_belt",
+                "params": {
+                    "speed": speed,
+                    "direction": self.conv_direction,
+                    "interface": self.conv_interface,
+                    "duration": 2.0,
+                },
+            }
+        )
 
     def seq_add_conveyor_dist(self):
         speed_mm = round(self.conv_speed_slider.get(), 1)
-        self._seq_insert({"type": "conveyor_belt_distance", "params": {
-            "speed": speed_mm, "distance": 100.0,
-            "direction": self.conv_direction, "interface": self.conv_interface}})
+        self._seq_insert(
+            {
+                "type": "conveyor_belt_distance",
+                "params": {
+                    "speed": speed_mm,
+                    "distance": 100.0,
+                    "direction": self.conv_direction,
+                    "interface": self.conv_interface,
+                },
+            }
+        )
 
     # ── Conveyor live control ─────────────────────────────────────────────────
 
@@ -729,21 +881,25 @@ class DobotController:
             return
         if self.conv_running:
             self.conv_running = False
-            self.btn_conv_run.text  = "Start"
+            self.btn_conv_run.text = "Start"
             self.btn_conv_run.style = Button.SUCCESS
             d, i = self.conv_direction, self.conv_interface
-            threading.Thread(target=lambda: self.device.conveyor_belt(0, d, i),
-                             daemon=True).start()
+            threading.Thread(
+                target=lambda: self.device.conveyor_belt(0, d, i), daemon=True
+            ).start()
             self.logger.info("Conveyor stopped")
         else:
             self.conv_running = True
-            self.btn_conv_run.text  = "Stop"
+            self.btn_conv_run.text = "Stop"
             self.btn_conv_run.style = Button.DANGER
             speed = self.conv_speed_slider.get() / 100.0
             d, i = self.conv_direction, self.conv_interface
-            threading.Thread(target=lambda: self.device.conveyor_belt(speed, d, i),
-                             daemon=True).start()
-            self.logger.info(f"Conveyor {int(speed*100)}% {'FWD' if d > 0 else 'REV'} iface={i}")
+            threading.Thread(
+                target=lambda: self.device.conveyor_belt(speed, d, i), daemon=True
+            ).start()
+            self.logger.info(
+                f"Conveyor {int(speed * 100)}% {'FWD' if d > 0 else 'REV'} iface={i}"
+            )
 
     def toggle_conv_direction(self):
         self.conv_direction = -1 if self.conv_direction == 1 else 1
@@ -751,8 +907,9 @@ class DobotController:
         if self.conv_running and self.is_connected:
             speed = self.conv_speed_slider.get() / 100.0
             d, i = self.conv_direction, self.conv_interface
-            threading.Thread(target=lambda: self.device.conveyor_belt(speed, d, i),
-                             daemon=True).start()
+            threading.Thread(
+                target=lambda: self.device.conveyor_belt(speed, d, i), daemon=True
+            ).start()
 
     def toggle_conv_interface(self):
         self.conv_interface = 1 - self.conv_interface
@@ -823,8 +980,18 @@ class DobotController:
         try:
             for key, field in self.seq_edit_fields:
                 val = field.get().strip()
-                if key in ("x", "y", "z", "r", "seconds", "velocity", "acceleration",
-                           "speed", "distance", "duration"):
+                if key in (
+                    "x",
+                    "y",
+                    "z",
+                    "r",
+                    "seconds",
+                    "velocity",
+                    "acceleration",
+                    "speed",
+                    "distance",
+                    "duration",
+                ):
                     p[key] = float(val)
                 elif key in ("address", "direction", "interface"):
                     p[key] = int(val)
@@ -866,7 +1033,7 @@ class DobotController:
                     if self.seq_stop_evt.is_set():
                         return
                     self.seq_current = i
-                    self.logger.info(f"Step {i+1}/{len(steps)}: {step_label(step)}")
+                    self.logger.info(f"Step {i + 1}/{len(steps)}: {step_label(step)}")
                     self._seq_exec_step(step)
                 if not self.seq_looping:
                     break
@@ -880,12 +1047,12 @@ class DobotController:
                 except Exception:
                     pass
         except Exception as e:
-            self.logger.error(f"Playback error at step {self.seq_current+1}: {e}")
+            self.logger.error(f"Playback error at step {self.seq_current + 1}: {e}")
         finally:
             self.seq_playing = False
-            self.seq_paused  = False
+            self.seq_paused = False
             self.seq_current = -1
-            self.btn_seq_play.text  = "Play"
+            self.btn_seq_play.text = "Play"
             self.btn_seq_play.style = Button.SUCCESS
 
     def _seq_exec_step(self, step):
@@ -895,7 +1062,9 @@ class DobotController:
             alarms = self.device.get_alarms()
             if alarms:
                 self.device.clear_alarms()
-                self.logger.warning(f"Cleared alarms before step: {', '.join(str(a) for a in alarms)}")
+                self.logger.warning(
+                    f"Cleared alarms before step: {', '.join(str(a) for a in alarms)}"
+                )
         except Exception:
             pass
 
@@ -905,8 +1074,13 @@ class DobotController:
         elif t == "move_rel":
             # move_rel doesn't return cmd index, so compute absolute target ourselves
             cur = self.device.get_pose().position
-            cmd = self.device.move_to(cur.x + p["x"], cur.y + p["y"],
-                                      cur.z + p["z"], cur.r + p["r"], wait=False)
+            cmd = self.device.move_to(
+                cur.x + p["x"],
+                cur.y + p["y"],
+                cur.z + p["z"],
+                cur.r + p["r"],
+                wait=False,
+            )
             self._seq_wait_cmd(cmd)
         elif t == "suction":
             self.device.suck(p["on"])
@@ -929,8 +1103,9 @@ class DobotController:
                 self.seq_stop_evt.wait(timeout=p["duration"])
                 self.device.conveyor_belt(0, p["direction"], p["interface"])
         elif t == "conveyor_belt_distance":
-            self.device.conveyor_belt_distance(p["speed"], p["distance"],
-                                               p["direction"], p["interface"])
+            self.device.conveyor_belt_distance(
+                p["speed"], p["distance"], p["direction"], p["interface"]
+            )
 
     def _seq_wait_cmd(self, cmd_idx):
         """Poll for command completion, checking stop event every 100ms."""
@@ -963,7 +1138,7 @@ class DobotController:
             return
         if not self.seq_playing:
             threading.Thread(target=self._seq_play, daemon=True).start()
-            self.btn_seq_play.text  = "Pause"
+            self.btn_seq_play.text = "Pause"
             self.btn_seq_play.style = Button.NORMAL
         elif self.seq_paused:
             self.seq_paused = False
@@ -980,7 +1155,7 @@ class DobotController:
 
     def seq_on_loop_toggle(self):
         self.seq_looping = not self.seq_looping
-        self.btn_seq_loop.text  = f"Loop: {'ON' if self.seq_looping else 'OFF'}"
+        self.btn_seq_loop.text = f"Loop: {'ON' if self.seq_looping else 'OFF'}"
         self.btn_seq_loop.style = Button.SUCCESS if self.seq_looping else Button.GHOST
 
     # ── Sequence: persistence ─────────────────────────────────────────────────
@@ -1012,7 +1187,9 @@ class DobotController:
 
     def seq_show_load_picker(self):
         if os.path.isdir(SEQUENCES_DIR):
-            self.seq_files = sorted(f for f in os.listdir(SEQUENCES_DIR) if f.endswith(".json"))
+            self.seq_files = sorted(
+                f for f in os.listdir(SEQUENCES_DIR) if f.endswith(".json")
+            )
         else:
             self.seq_files = []
         if not self.seq_files:
@@ -1040,7 +1217,11 @@ class DobotController:
         draw_text(status, sx + 14, 34, FSM, dot)
 
         lx = PAD
-        port_name = self.available_ports[self.port_index] if self.available_ports else "No ports"
+        port_name = (
+            self.available_ports[self.port_index]
+            if self.available_ports
+            else "No ports"
+        )
         draw_text(port_name, lx + 30, 68, FMD, C_TEXT)
         self.btn_port_prev.draw()
         self.btn_port_next.draw()
@@ -1053,16 +1234,20 @@ class DobotController:
     def _draw_left(self):
         lx = PAD
         draw_panel(lx, 100, COL_W, 80, "Current Position")
-        for i, (k, lbl) in enumerate([("X","X"), ("Y","Y"), ("Z","Z"), ("R","R")]):
+        for i, (k, lbl) in enumerate([("X", "X"), ("Y", "Y"), ("Z", "Z"), ("R", "R")]):
             cx = lx + 10 + i * 110
             dlabel(lbl, cx, 131, C_DIM)
             draw_text(f"{self.pos[k]:8.2f}", cx, 147, FLG, C_TEXT)
 
         draw_panel(lx, 188, COL_W, 158, "Move To")
-        dlabel("X", lx + 12, 230); dlabel("Y", lx + 190, 230)
-        dlabel("Z", lx + 12, 270); dlabel("R", lx + 190, 270)
-        self.inp_x.draw(); self.inp_y.draw()
-        self.inp_z.draw(); self.inp_r.draw()
+        dlabel("X", lx + 12, 230)
+        dlabel("Y", lx + 190, 230)
+        dlabel("Z", lx + 12, 270)
+        dlabel("R", lx + 190, 270)
+        self.inp_x.draw()
+        self.inp_y.draw()
+        self.inp_z.draw()
+        self.inp_r.draw()
         self.btn_use_curr.draw()
         self.btn_move.draw()
 
@@ -1105,7 +1290,6 @@ class DobotController:
         for btn in self.seq_add_btns:
             btn.draw()
 
-
         # Step list or load picker
         if self.seq_load_picker:
             self._draw_load_picker()
@@ -1121,10 +1305,23 @@ class DobotController:
         # Inline edit fields (drawn below list)
         if self.seq_editing >= 0 and self.seq_edit_fields:
             ey = SEQ_LIST_Y + SEQ_LIST_H + 4
-            labels = {"x":"X","y":"Y","z":"Z","r":"R","on":"ON?","seconds":"Sec",
-                      "velocity":"Vel","acceleration":"Accel","address":"Pin","state":"ON?",
-                      "speed":"Speed","direction":"Dir","interface":"Iface",
-                      "duration":"Dur(s)","distance":"Dist"}
+            labels = {
+                "x": "X",
+                "y": "Y",
+                "z": "Z",
+                "r": "R",
+                "on": "ON?",
+                "seconds": "Sec",
+                "velocity": "Vel",
+                "acceleration": "Accel",
+                "address": "Pin",
+                "state": "ON?",
+                "speed": "Speed",
+                "direction": "Dir",
+                "interface": "Iface",
+                "duration": "Dur(s)",
+                "distance": "Dist",
+            }
             for key, field in self.seq_edit_fields:
                 lbl = labels.get(key, key)
                 dlabel(lbl, field.rect.x, ey - 14, C_DIM)
@@ -1164,7 +1361,7 @@ class DobotController:
                 draw_rectangle(lx, ry, lw, SEQ_ROW_H, Color(28, 28, 38, 255))
 
             # Step number
-            draw_text(f"{idx+1:02d}", lx + 4, ry + 7, FSM, C_MUTED)
+            draw_text(f"{idx + 1:02d}", lx + 4, ry + 7, FSM, C_MUTED)
             # Type dot
             dot_col = STEP_TYPE_COLORS.get(step["type"], C_DIM)
             draw_circle(lx + 30, ry + 14, 4, dot_col)
@@ -1176,7 +1373,9 @@ class DobotController:
         total = len(self.sequence)
         if total > SEQ_MAX_VIS:
             bar_h = max(16, int(lh * SEQ_MAX_VIS / total))
-            bar_y = ly + int((lh - bar_h) * self.seq_scroll / max(1, total - SEQ_MAX_VIS))
+            bar_y = ly + int(
+                (lh - bar_h) * self.seq_scroll / max(1, total - SEQ_MAX_VIS)
+            )
             draw_rectangle_rounded(_rrec(lx + lw - 5, bar_y, 5, bar_h), 1.0, 4, C_MUTED)
 
         # Empty state
@@ -1217,7 +1416,13 @@ class DobotController:
             y = LOG_Y + 34 + i * line_h
             ts_w = measure_text(e.ts, FSM) + 6
             draw_text(e.ts, PAD + 8, y, FSM, C_MUTED)
-            lc = C_ERR if e.level == "ERROR" else C_WARN if e.level == "WARNING" else C_DIM
+            lc = (
+                C_ERR
+                if e.level == "ERROR"
+                else C_WARN
+                if e.level == "WARNING"
+                else C_DIM
+            )
             draw_text(e.msg, PAD + 8 + ts_w, y, FSM, lc)
 
     def _draw(self):
@@ -1237,54 +1442,84 @@ class DobotController:
         if self.btn_port_next.clicked() and self.available_ports:
             self.port_index = (self.port_index + 1) % len(self.available_ports)
 
-        if self.btn_refresh.clicked():  self.refresh_ports()
+        if self.btn_refresh.clicked():
+            self.refresh_ports()
         if self.btn_connect.clicked():
             self.disconnect() if self.is_connected else self.connect()
-        if self.btn_home.clicked():     self.cmd_home()
-        if self.btn_use_curr.clicked(): self.use_current()
-        if self.btn_move.clicked():     self.cmd_move_to()
+        if self.btn_home.clicked():
+            self.cmd_home()
+        if self.btn_use_curr.clicked():
+            self.use_current()
+        if self.btn_move.clicked():
+            self.cmd_move_to()
 
         for step, btn in self.step_btns:
-            if btn.clicked(): self.jog_step = step
+            if btn.clicked():
+                self.jog_step = step
 
         xm, xp, ym, yp = self.jog_row1
-        if xm.clicked(): self.jog_step_move('x', -1)
-        if xp.clicked(): self.jog_step_move('x',  1)
-        if ym.clicked(): self.jog_step_move('y', -1)
-        if yp.clicked(): self.jog_step_move('y',  1)
-        if self.btn_zm.clicked(): self.jog_step_move('z', -1)
-        if self.btn_zp.clicked(): self.jog_step_move('z',  1)
-        if self.btn_vacuum.clicked():       self.toggle_vacuum()
-        if self.btn_clear_alarms.clicked(): self.cmd_clear_alarms()
-        if self.btn_conv_dir.clicked():     self.toggle_conv_direction()
-        if self.btn_conv_run.clicked():     self.cmd_conveyor_toggle()
-        if self.btn_conv_iface.clicked():   self.toggle_conv_interface()
+        if xm.clicked():
+            self.jog_step_move("x", -1)
+        if xp.clicked():
+            self.jog_step_move("x", 1)
+        if ym.clicked():
+            self.jog_step_move("y", -1)
+        if yp.clicked():
+            self.jog_step_move("y", 1)
+        if self.btn_zm.clicked():
+            self.jog_step_move("z", -1)
+        if self.btn_zp.clicked():
+            self.jog_step_move("z", 1)
+        if self.btn_vacuum.clicked():
+            self.toggle_vacuum()
+        if self.btn_clear_alarms.clicked():
+            self.cmd_clear_alarms()
+        if self.btn_conv_dir.clicked():
+            self.toggle_conv_direction()
+        if self.btn_conv_run.clicked():
+            self.cmd_conveyor_toggle()
+        if self.btn_conv_iface.clicked():
+            self.toggle_conv_interface()
 
         # Keyboard jog (only when no input field is active)
-        any_input_active = any(f.active for f in
-            [self.inp_x, self.inp_y, self.inp_z, self.inp_r, self.inp_seq_name]
-            + [f for _, f in self.seq_edit_fields])
+        any_input_active = any(
+            f.active
+            for f in [self.inp_x, self.inp_y, self.inp_z, self.inp_r, self.inp_seq_name]
+            + [f for _, f in self.seq_edit_fields]
+        )
 
         if not any_input_active:
             step = 0.06
-            if   is_key_down(KEY_RIGHT): self._kb_vx = min(1.0, self._kb_vx + step)
-            elif is_key_down(KEY_LEFT):  self._kb_vx = max(-1.0, self._kb_vx - step)
-            elif (is_key_released(KEY_RIGHT) or is_key_released(KEY_LEFT)): self._kb_vx = 0.0
+            if is_key_down(KEY_RIGHT):
+                self._kb_vx = min(1.0, self._kb_vx + step)
+            elif is_key_down(KEY_LEFT):
+                self._kb_vx = max(-1.0, self._kb_vx - step)
+            elif is_key_released(KEY_RIGHT) or is_key_released(KEY_LEFT):
+                self._kb_vx = 0.0
 
-            if   is_key_down(KEY_DOWN): self._kb_vy = min(1.0, self._kb_vy + step)
-            elif is_key_down(KEY_UP):   self._kb_vy = max(-1.0, self._kb_vy - step)
-            elif (is_key_released(KEY_UP) or is_key_released(KEY_DOWN)): self._kb_vy = 0.0
+            if is_key_down(KEY_DOWN):
+                self._kb_vy = min(1.0, self._kb_vy + step)
+            elif is_key_down(KEY_UP):
+                self._kb_vy = max(-1.0, self._kb_vy - step)
+            elif is_key_released(KEY_UP) or is_key_released(KEY_DOWN):
+                self._kb_vy = 0.0
 
             if self._kb_vx != 0 or self._kb_vy != 0:
                 self.joystick.set_kb(self._kb_vx, self._kb_vy)
 
-            if   is_key_down(KEY_PAGE_UP):   self.z_slider.value = min(100, self.z_slider.value + 4)
-            elif is_key_down(KEY_PAGE_DOWN):  self.z_slider.value = max(-100, self.z_slider.value - 4)
-            elif (is_key_released(KEY_PAGE_UP) or is_key_released(KEY_PAGE_DOWN)):
+            if is_key_down(KEY_PAGE_UP):
+                self.z_slider.value = min(100, self.z_slider.value + 4)
+            elif is_key_down(KEY_PAGE_DOWN):
+                self.z_slider.value = max(-100, self.z_slider.value - 4)
+            elif is_key_released(KEY_PAGE_UP) or is_key_released(KEY_PAGE_DOWN):
                 self.z_slider.value = 0
 
             # Delete key for selected step
-            if is_key_pressed(KEY_DELETE) and self.seq_selected >= 0 and not self.seq_playing:
+            if (
+                is_key_pressed(KEY_DELETE)
+                and self.seq_selected >= 0
+                and not self.seq_playing
+            ):
                 self.sequence.pop(self.seq_selected)
                 self.seq_selected = min(self.seq_selected, len(self.sequence) - 1)
 
@@ -1296,22 +1531,34 @@ class DobotController:
         for btn in self.seq_add_btns:
             btn.enabled = editing_ok
         self.btn_del_step.enabled = editing_ok and self.seq_selected >= 0
-        self.btn_move_up.enabled  = editing_ok and self.seq_selected > 0
-        self.btn_move_dn.enabled  = editing_ok and 0 <= self.seq_selected < len(self.sequence) - 1
+        self.btn_move_up.enabled = editing_ok and self.seq_selected > 0
+        self.btn_move_dn.enabled = (
+            editing_ok and 0 <= self.seq_selected < len(self.sequence) - 1
+        )
         self.btn_dup_step.enabled = editing_ok and self.seq_selected >= 0
         self.btn_seq_clear.enabled = editing_ok
 
         # Record buttons
-        if self.btn_add_pos.clicked():   self.seq_add_position()
-        if self.btn_add_suck.clicked():  self.seq_add_suction()
-        if self.btn_add_grip.clicked():  self.seq_add_gripper()
-        if self.btn_add_wait.clicked():  self.seq_add_wait()
-        if self.btn_add_home.clicked():  self.seq_add_home()
-        if self.btn_add_spd.clicked():   self.seq_add_speed()
-        if self.btn_add_io.clicked():    self.seq_add_io()
-        if self.btn_add_rel.clicked():   self.seq_add_rel()
-        if self.btn_add_conv.clicked():  self.seq_add_conveyor()
-        if self.btn_add_convd.clicked(): self.seq_add_conveyor_dist()
+        if self.btn_add_pos.clicked():
+            self.seq_add_position()
+        if self.btn_add_suck.clicked():
+            self.seq_add_suction()
+        if self.btn_add_grip.clicked():
+            self.seq_add_gripper()
+        if self.btn_add_wait.clicked():
+            self.seq_add_wait()
+        if self.btn_add_home.clicked():
+            self.seq_add_home()
+        if self.btn_add_spd.clicked():
+            self.seq_add_speed()
+        if self.btn_add_io.clicked():
+            self.seq_add_io()
+        if self.btn_add_rel.clicked():
+            self.seq_add_rel()
+        if self.btn_add_conv.clicked():
+            self.seq_add_conveyor()
+        if self.btn_add_convd.clicked():
+            self.seq_add_conveyor_dist()
 
         # Load picker interaction
         if self.seq_load_picker:
@@ -1324,7 +1571,9 @@ class DobotController:
                     idx = self.seq_file_scroll + vi
                     if 0 <= idx < len(self.seq_files):
                         self.seq_load_file(self.seq_files[idx])
-                elif not check_collision_point_rec(mp, _rrec(SEQ_X, SEQ_LIST_Y, SEQ_W, SEQ_LIST_H)):
+                elif not check_collision_point_rec(
+                    mp, _rrec(SEQ_X, SEQ_LIST_Y, SEQ_W, SEQ_LIST_H)
+                ):
                     self.seq_load_picker = False
 
             # Scroll in picker
@@ -1333,13 +1582,17 @@ class DobotController:
                 wheel = get_mouse_wheel_move()
                 if wheel:
                     max_scroll = max(0, len(self.seq_files) - SEQ_MAX_VIS)
-                    self.seq_file_scroll = max(0, min(max_scroll, self.seq_file_scroll - int(wheel)))
+                    self.seq_file_scroll = max(
+                        0, min(max_scroll, self.seq_file_scroll - int(wheel))
+                    )
             return  # don't process list clicks while picker is open
 
         # Step list click
         mp = get_mouse_position()
         list_rect = _rrec(SEQ_X + 8, SEQ_LIST_Y, SEQ_W - 16, SEQ_LIST_H)
-        if check_collision_point_rec(mp, list_rect) and is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+        if check_collision_point_rec(mp, list_rect) and is_mouse_button_pressed(
+            MOUSE_BUTTON_LEFT
+        ):
             vi = int((mp.y - SEQ_LIST_Y) // SEQ_ROW_H)
             idx = self.seq_scroll + vi
             if 0 <= idx < len(self.sequence):
@@ -1364,12 +1617,18 @@ class DobotController:
             self._seq_cancel_edit()
         if self.btn_move_up.clicked() and self.seq_selected > 0:
             i = self.seq_selected
-            self.sequence[i-1], self.sequence[i] = self.sequence[i], self.sequence[i-1]
+            self.sequence[i - 1], self.sequence[i] = (
+                self.sequence[i],
+                self.sequence[i - 1],
+            )
             self.seq_selected -= 1
             self._seq_cancel_edit()
         if self.btn_move_dn.clicked() and self.seq_selected < len(self.sequence) - 1:
             i = self.seq_selected
-            self.sequence[i], self.sequence[i+1] = self.sequence[i+1], self.sequence[i]
+            self.sequence[i], self.sequence[i + 1] = (
+                self.sequence[i + 1],
+                self.sequence[i],
+            )
             self.seq_selected += 1
             self._seq_cancel_edit()
         if self.btn_dup_step.clicked() and self.seq_selected >= 0:
@@ -1386,13 +1645,18 @@ class DobotController:
                 self._seq_cancel_edit()
 
         # Playback
-        if self.btn_seq_play.clicked(): self.seq_on_play_pause()
-        if self.btn_seq_stop.clicked(): self.seq_on_stop()
-        if self.btn_seq_loop.clicked(): self.seq_on_loop_toggle()
+        if self.btn_seq_play.clicked():
+            self.seq_on_play_pause()
+        if self.btn_seq_stop.clicked():
+            self.seq_on_stop()
+        if self.btn_seq_loop.clicked():
+            self.seq_on_loop_toggle()
 
         # Save / Load / Clear
-        if self.btn_seq_save.clicked():  self.seq_save()
-        if self.btn_seq_load.clicked():  self.seq_show_load_picker()
+        if self.btn_seq_save.clicked():
+            self.seq_save()
+        if self.btn_seq_load.clicked():
+            self.seq_show_load_picker()
         if self.btn_seq_clear.clicked():
             self.sequence.clear()
             self.seq_selected = -1
