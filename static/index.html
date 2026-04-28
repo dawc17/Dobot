@@ -1737,6 +1737,15 @@
           .querySelectorAll(".add")
           .forEach((b) => (b.onclick = () => addStep(b.dataset.type)));
 
+        // Slett steg med Delete-tasten
+        document.addEventListener("keydown", (e) => {
+          if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
+          if (e.key === "Delete" && S.selected >= 0) {
+            del(`/api/sequence/${S.selected}`);
+            S.selected = Math.max(-1, S.selected - 1);
+          }
+        });
+
         $("btn-del").onclick = () => {
           if (S.selected < 0) return;
           del(`/api/sequence/${S.selected}`);
