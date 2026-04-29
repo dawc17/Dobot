@@ -2144,10 +2144,7 @@
         if (t === "if_ir") {
           const pnames = {0:"GP1",1:"GP2",2:"GP4",3:"GP5"};
           const port = pnames[p.port] ?? "GP?";
-          const parts = [];
-          if (p.on_detected)     parts.push(`→${p.on_detected}`);
-          if (p.on_not_detected) parts.push(`not→${p.on_not_detected}`);
-          return `If IR [${port}] ${parts.length ? parts.join(", ") : "(no branch)"}`;
+          return `If IR [${port}] ${p.on_detected ? `→${p.on_detected}` : "(no branch)"}`;
         }
         if (t === "if_state") {
           const labels = {suction_on:"Suction ON",suction_off:"Suction OFF",conveyor_on:"Conveyor ON",conveyor_off:"Conveyor OFF"};
@@ -2248,7 +2245,7 @@
             dz: 0,
             dr: 0,
           },
-          if_ir: { port: 2, on_detected: 0, on_not_detected: 0 },
+          if_ir: { port: 2, on_detected: 0 },
           if_state: { condition: "suction_on", on_true: 0, on_false: 0 },
           if_color: { port: 1, color: "red", on_detected: 0, on_not_detected: 0 },
         };
@@ -2337,8 +2334,7 @@
             { value: "2", label: "GP4" },
             { value: "3", label: "GP5" },
           ]},
-          { k: "on_detected",     l: "Detected → go to step# (0=continue)"     },
-          { k: "on_not_detected", l: "Not detected → go to step# (0=continue)" },
+          { k: "on_detected", l: "Detected → go to step# (0=continue)" },
         ],
         if_state: [
           { k: "condition", l: "Condition", type: "select", options: [

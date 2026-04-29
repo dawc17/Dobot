@@ -128,10 +128,8 @@ def step_label(step: dict) -> str:
     if t == "if_ir":
         _pnames = {0:"GP1",1:"GP2",2:"GP4",3:"GP5"}
         port = _pnames.get(int(p.get("port", 2)), "?")
-        parts = []
-        if p.get("on_detected",     0): parts.append(f"→{p['on_detected']}")
-        if p.get("on_not_detected", 0): parts.append(f"not→{p['on_not_detected']}")
-        return f"If IR [{port}] {', '.join(parts) or '(no branch)'}"
+        tgt = p.get("on_detected", 0)
+        return f"If IR [{port}] " + (f"→{tgt}" if tgt else "(no branch)")
     if t == "if_state":
         _labels = {
             "suction_on": "Suction ON", "suction_off": "Suction OFF",
@@ -1339,22 +1337,26 @@ class DobotCore:
             _PNAMES = ["GP1", "GP2", "GP4", "GP5"]
             port_idx = min(max(int(p.get("port", 2)), 0), 3)
             port = _PORTS[port_idx]
-            on_detected     = p.get("on_detected",     0)
-            on_not_detected = p.get("on_not_detected", 0)
+            on_detected = p.get("on_detected", 0)
             try:
                 with self._dev_lock:
                     if self._ir_enabled != port:
                         _ir_set_v2(self.device, True, port)
                         time.sleep(0.15)
                         self._ir_enabled = port
-                    detected = _ir_get_v2(self.device, port)
-                self.logger.info(
-                    f"If IR [{_PNAMES[port_idx]}]: {'detected' if detected else 'not detected'}"
-                )
-                target = on_detected if detected else on_not_detected
-                if target > 0:
-                    self.logger.info(f"  → jumping to step {target}")
-                    self._seq_jump = target - 1
+                self.logger.info(f"If IR [{_PNAMES[port_idx]}]: waiting for detection…")
+                while not self.seq_stop_evt.is_set():
+                    with self._dev_lock:
+                        detected = _ir_get_v2(self.device, port)
+                    if detected:
+                        break
+                    self.seq_stop_evt.wait(timeout=0.1)
+                if self.seq_stop_evt.is_set():
+                    return
+                self.logger.info(f"If IR [{_PNAMES[port_idx]}]: detected")
+                if on_detected > 0:
+                    self.logger.info(f"  → jumping to step {on_detected}")
+                    self._seq_jump = on_detected - 1
             except Exception as e:
                 self.logger.warning(f"if_ir read error: {e}")
         elif t == "if_state":
