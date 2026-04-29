@@ -1117,7 +1117,7 @@
               + Wait Color
             </button>
             <button class="ghost add" data-type="move_to_named">+ Named</button>
-            <button class="ghost add" data-type="if_io">+ If IO</button>
+            <button class="ghost add" data-type="if_ir">+ If IR</button>
             <button class="ghost add" data-type="if_state">+ If State</button>
             <button class="ghost add" data-type="if_color">+ If Color</button>
           </div>
@@ -1868,7 +1868,7 @@
         color_branch: "#b040c0",
         wait_for_color: "#9030a8",
         move_to_named: "#38b2d0",
-        if_io: "#c83848",
+        if_ir: "#c83848",
         if_state: "#2090a8",
         if_color: "#b040c0",
       };
@@ -1916,11 +1916,13 @@
           const to = p.timeout > 0 ? ` ${p.timeout.toFixed(0)}s` : " ∞";
           return `Wait Color ${colors.join("|") || "?"}${to}`;
         }
-        if (t === "if_io") {
+        if (t === "if_ir") {
+          const pnames = {0:"GP1",1:"GP2",2:"GP4",3:"GP5"};
+          const port = pnames[p.port] ?? "GP?";
           const parts = [];
-          if (p.on_high) parts.push(`HIGH→${p.on_high}`);
-          if (p.on_low)  parts.push(`LOW→${p.on_low}`);
-          return `If IO #${p.address} ${parts.length ? parts.join(", ") : "(no branch)"}`;
+          if (p.on_detected)     parts.push(`→${p.on_detected}`);
+          if (p.on_not_detected) parts.push(`not→${p.on_not_detected}`);
+          return `If IR [${port}] ${parts.length ? parts.join(", ") : "(no branch)"}`;
         }
         if (t === "if_state") {
           const labels = {suction_on:"Suction ON",suction_off:"Suction OFF",conveyor_on:"Conveyor ON",conveyor_off:"Conveyor OFF"};
@@ -2021,7 +2023,7 @@
             dz: 0,
             dr: 0,
           },
-          if_io: { address: 1, on_high: 0, on_low: 0 },
+          if_ir: { port: 2, on_detected: 0, on_not_detected: 0 },
           if_state: { condition: "suction_on", on_true: 0, on_false: 0 },
           if_color: { port: 1, color: "red", on_detected: 0, on_not_detected: 0 },
         };
@@ -2103,10 +2105,15 @@
           { k: "dz", l: "dZ offset (mm)" },
           { k: "dr", l: "dR offset (°)" },
         ],
-        if_io: [
-          { k: "address", l: "Pin (1–22)" },
-          { k: "on_high", l: "HIGH → go to step# (0=continue)" },
-          { k: "on_low",  l: "LOW → go to step# (0=continue)" },
+        if_ir: [
+          { k: "port", l: "Sensor port", type: "select", options: [
+            { value: "0", label: "GP1" },
+            { value: "1", label: "GP2" },
+            { value: "2", label: "GP4" },
+            { value: "3", label: "GP5" },
+          ]},
+          { k: "on_detected",     l: "Detected → go to step# (0=continue)"     },
+          { k: "on_not_detected", l: "Not detected → go to step# (0=continue)" },
         ],
         if_state: [
           { k: "condition", l: "Condition", type: "select", options: [

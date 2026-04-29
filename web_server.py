@@ -11,9 +11,33 @@ import threading
 import time
 from typing import List, Optional
 
+import struct
+
 from flask import Flask, Response, jsonify, request, send_file, stream_with_context
 from pydobotplus import Dobot
+from pydobotplus.message import Message
 from serial.tools import list_ports
+
+
+def _ir_set_v2(device, enable: bool, port: int):
+    """Enable/disable IR sensor using V2 protocol (appends version byte 0x01)."""
+    msg = Message()
+    msg.id = 138
+    msg.ctrl = 0x02
+    msg.params = bytearray([int(enable), port, 0x01])
+    device._send_command(msg)
+
+
+def _ir_get_v2(device, port: int) -> bool:
+    """Read IR sensor using V2 protocol. Returns True if object detected."""
+    msg = Message()
+    msg.id = 138
+    msg.ctrl = 0x00
+    msg.params = bytearray([port, 0x01])
+    response = device._send_command(msg)
+    raw_hex = " ".join(f"{b:02x}" for b in response.params)
+    logging.getLogger("dobot").info(f"IR raw response params: [{raw_hex}]")
+    return bool(struct.unpack_from('?', response.params, 0)[0])
 
 SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -83,11 +107,13 @@ def step_label(step: dict) -> str:
         return f"Loop {p.get('count', 1)} times"
     if t == "wait_io":
         return f"Wait IO #{p.get('address', 1)} {'HIGH' if p.get('state', True) else 'LOW'}"
-    if t == "if_io":
+    if t == "if_ir":
+        _pnames = {0:"GP1",1:"GP2",2:"GP4",3:"GP5"}
+        port = _pnames.get(int(p.get("port", 2)), "?")
         parts = []
-        if p.get("on_high", 0): parts.append(f"HIGH→{p['on_high']}")
-        if p.get("on_low", 0):  parts.append(f"LOW→{p['on_low']}")
-        return f"If IO #{p.get('address', 1)} {', '.join(parts) or '(no branch)'}"
+        if p.get("on_detected",     0): parts.append(f"→{p['on_detected']}")
+        if p.get("on_not_detected", 0): parts.append(f"not→{p['on_not_detected']}")
+        return f"If IR [{port}] {', '.join(parts) or '(no branch)'}"
     if t == "if_state":
         _labels = {
             "suction_on": "Suction ON", "suction_off": "Suction OFF",
@@ -1082,20 +1108,29 @@ class DobotCore:
                     self.logger.warning(f"IO wait timeout on #{address}")
                     break
                 self.seq_stop_evt.wait(timeout=0.1)
-        elif t == "if_io":
-            address = p.get("address", 1)
-            on_high = p.get("on_high", 0)
-            on_low  = p.get("on_low",  0)
+        elif t == "if_ir":
+            _PORTS = [Dobot.PORT_GP1, Dobot.PORT_GP2, Dobot.PORT_GP4, Dobot.PORT_GP5]
+            _PNAMES = ["GP1", "GP2", "GP4", "GP5"]
+            port_idx = min(max(int(p.get("port", 2)), 0), 3)
+            port = _PORTS[port_idx]
+            on_detected     = p.get("on_detected",     0)
+            on_not_detected = p.get("on_not_detected", 0)
             try:
-                state = bool(self.device.get_io(address))
-                label = "HIGH" if state else "LOW"
-                self.logger.info(f"If IO #{address}: {label}")
-                target = on_high if state else on_low
+                with self._dev_lock:
+                    if self._ir_enabled != port:
+                        _ir_set_v2(self.device, True, port)
+                        time.sleep(0.15)
+                        self._ir_enabled = port
+                    detected = _ir_get_v2(self.device, port)
+                self.logger.info(
+                    f"If IR [{_PNAMES[port_idx]}]: {'detected' if detected else 'not detected'}"
+                )
+                target = on_detected if detected else on_not_detected
                 if target > 0:
                     self.logger.info(f"  → jumping to step {target}")
                     self._seq_jump = target - 1
             except Exception as e:
-                self.logger.warning(f"if_io read error on #{address}: {e}")
+                self.logger.warning(f"if_ir read error: {e}")
         elif t == "if_state":
             condition = p.get("condition", "suction_on")
             on_true  = p.get("on_true",  0)
@@ -1417,10 +1452,10 @@ def api_ir_sensor():
     port = _PORT_MAP.get(d.get("port", "GP4"), Dobot.PORT_GP4)
     try:
         if core._ir_enabled != port:
-            core.device.set_ir(enable=True, port=port)
+            _ir_set_v2(core.device, True, port)
             time.sleep(0.15)
             core._ir_enabled = port
-        detected = core.device.get_ir(port=port)
+        detected = _ir_get_v2(core.device, port)
         port_name = d.get("port", "GP4")
         core.logger.info(f"IR [{port_name}]: {'DETECTED' if detected else 'clear'} (raw={detected})")
         return jsonify(detected=bool(detected))
