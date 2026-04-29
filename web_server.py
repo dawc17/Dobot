@@ -26,9 +26,9 @@ def _quiet_get_color(self, port=Dobot.PORT_GP2, version=0x1):
     msg.ctrl = 0x00
     msg.params = bytearray([port, 0x01, version])
     response = self._send_command(msg)
-    r = struct.unpack_from('?', response.params, 0)[0]
-    g = struct.unpack_from('?', response.params, 1)[0]
-    b = struct.unpack_from('?', response.params, 2)[0]
+    r = struct.unpack_from("?", response.params, 0)[0]
+    g = struct.unpack_from("?", response.params, 1)[0]
+    b = struct.unpack_from("?", response.params, 2)[0]
     return [r, g, b]
 
 
@@ -54,7 +54,8 @@ def _ir_get_v2(device, port: int) -> bool:
     r = device._send_command(msg)
     raw_hex = " ".join(f"{b:02x}" for b in r.params)
     log.info(f"IR V2-GET port={port} -> [{raw_hex}]")
-    return bool(struct.unpack_from('?', r.params, 0)[0])
+    return bool(struct.unpack_from("?", r.params, 0)[0])
+
 
 SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
@@ -126,27 +127,33 @@ def step_label(step: dict) -> str:
     if t == "wait_io":
         return f"Wait IO #{p.get('address', 1)} {'HIGH' if p.get('state', True) else 'LOW'}"
     if t == "if_ir":
-        _pnames = {0:"GP1",1:"GP2",2:"GP4",3:"GP5"}
+        _pnames = {0: "GP1", 1: "GP2", 2: "GP4", 3: "GP5"}
         port = _pnames.get(int(p.get("port", 2)), "?")
         tgt = p.get("on_detected", 0)
         return f"If IR [{port}] " + (f"→{tgt}" if tgt else "(no branch)")
     if t == "if_state":
         _labels = {
-            "suction_on": "Suction ON", "suction_off": "Suction OFF",
-            "conveyor_on": "Conveyor ON", "conveyor_off": "Conveyor OFF",
+            "suction_on": "Suction ON",
+            "suction_off": "Suction OFF",
+            "conveyor_on": "Conveyor ON",
+            "conveyor_off": "Conveyor OFF",
         }
         cond = _labels.get(p.get("condition", "suction_on"), p.get("condition", "?"))
         parts = []
-        if p.get("on_true",  0): parts.append(f"→{p['on_true']}")
-        if p.get("on_false", 0): parts.append(f"else→{p['on_false']}")
+        if p.get("on_true", 0):
+            parts.append(f"→{p['on_true']}")
+        if p.get("on_false", 0):
+            parts.append(f"else→{p['on_false']}")
         return f"If {cond} {', '.join(parts) or '(no branch)'}"
     if t == "if_color":
-        _pnames = {0:"GP1", 1:"GP2", 2:"GP4", 3:"GP5"}
+        _pnames = {0: "GP1", 1: "GP2", 2: "GP4", 3: "GP5"}
         port = _pnames.get(int(p.get("port", 1)), "?")
         color = p.get("color", "red").capitalize()
         parts = []
-        if p.get("on_detected",     0): parts.append(f"→{p['on_detected']}")
-        if p.get("on_not_detected", 0): parts.append(f"not→{p['on_not_detected']}")
+        if p.get("on_detected", 0):
+            parts.append(f"→{p['on_detected']}")
+        if p.get("on_not_detected", 0):
+            parts.append(f"not→{p['on_not_detected']}")
         return f"If {color} [{port}] {', '.join(parts) or '(no branch)'}"
     if t == "run_sequence":
         return f"Run Sequence '{p.get('filename', '?')}'"
@@ -238,7 +245,7 @@ class DobotCore:
         self.log_entries: List[dict] = []
         self._setup_logger()
         self._load_positions()
-        self.refresh_ports()
+        # Do NOT scan ports at startup. Only scan when requested.
 
     # ── Logger ────────────────────────────────────────────────────────────────
 
@@ -296,23 +303,30 @@ class DobotCore:
     # ── Connection ────────────────────────────────────────────────────────────
 
     def refresh_ports(self):
-        infos = list_ports.comports()
-        self.available_ports = [p.device for p in infos]
-        if self.available_ports:
-            usb = [
-                p.device
-                for p in infos
-                if "USB" in (p.hwid or "").upper()
-                or "USB" in (p.description or "").upper()
-            ]
-            if usb:
-                self.port_index = self.available_ports.index(usb[0])
-            self.logger.info(f"Found {len(self.available_ports)} port(s)")
-        else:
-            self.logger.warning("No COM ports found")
-        hub.push(
-            {"type": "ports", "ports": self.available_ports, "index": self.port_index}
-        )
+        def _scan_ports():
+            infos = list_ports.comports()
+            self.available_ports = [p.device for p in infos]
+            if self.available_ports:
+                usb = [
+                    p.device
+                    for p in infos
+                    if "USB" in (p.hwid or "").upper()
+                    or "USB" in (p.description or "").upper()
+                ]
+                if usb:
+                    self.port_index = self.available_ports.index(usb[0])
+                self.logger.info(f"Found {len(self.available_ports)} port(s)")
+            else:
+                self.logger.warning("No COM ports found")
+            hub.push(
+                {
+                    "type": "ports",
+                    "ports": self.available_ports,
+                    "index": self.port_index,
+                }
+            )
+
+        threading.Thread(target=_scan_ports, daemon=True).start()
 
     def connect(self, port: Optional[str] = None):
         if not self.available_ports and not port:
@@ -862,6 +876,7 @@ class DobotCore:
             }
 
             try:
+
                 def _check_stopped():
                     if self.seq_stop_evt.is_set():
                         raise _ScriptStopped()
@@ -883,9 +898,7 @@ class DobotCore:
                         z = float(pos["z"]) + float(dz)
                         r = float(pos["r"]) + float(dr)
                     except Exception:
-                        self.logger.error(
-                            f"Invalid named position values for '{n}'"
-                        )
+                        self.logger.error(f"Invalid named position values for '{n}'")
                         return
                     self._safe_move(x, y, z, r)
 
@@ -1361,16 +1374,18 @@ class DobotCore:
                 self.logger.warning(f"if_ir read error: {e}")
         elif t == "if_state":
             condition = p.get("condition", "suction_on")
-            on_true  = p.get("on_true",  0)
+            on_true = p.get("on_true", 0)
             on_false = p.get("on_false", 0)
             state_map = {
-                "suction_on":   self.vacuum_on,
-                "suction_off":  not self.vacuum_on,
-                "conveyor_on":  self.conv_running,
+                "suction_on": self.vacuum_on,
+                "suction_off": not self.vacuum_on,
+                "conveyor_on": self.conv_running,
                 "conveyor_off": not self.conv_running,
             }
             result = state_map.get(condition, False)
-            self.logger.info(f"If {condition}: {'true → branch' if result else 'false → branch'}")
+            self.logger.info(
+                f"If {condition}: {'true → branch' if result else 'false → branch'}"
+            )
             target = on_true if result else on_false
             if target > 0:
                 self.logger.info(f"  → jumping to step {target}")
@@ -1382,7 +1397,7 @@ class DobotCore:
             port = _PORTS[port_idx]
             color = p.get("color", "red")
             color_idx = {"red": 0, "green": 1, "blue": 2}.get(color, 0)
-            on_detected     = p.get("on_detected",     0)
+            on_detected = p.get("on_detected", 0)
             on_not_detected = p.get("on_not_detected", 0)
             try:
                 with self._dev_lock:
@@ -1714,7 +1729,9 @@ def api_ir_sensor():
             core._ir_enabled = port
         detected = _ir_get_v2(core.device, port)
         port_name = d.get("port", "GP4")
-        core.logger.info(f"IR [{port_name}]: {'DETECTED' if detected else 'clear'} (raw={detected})")
+        core.logger.info(
+            f"IR [{port_name}]: {'DETECTED' if detected else 'clear'} (raw={detected})"
+        )
         return jsonify(detected=bool(detected))
     except Exception as e:
         core._ir_enabled = None

@@ -31,7 +31,9 @@ def send(label, ctrl, params):
     try:
         r = d._send_command(msg)
         hex_out = " ".join(f"{b:02x}" for b in r.params)
-        print(f"  {label:50s} sent ctrl={ctrl:#04x} params={[f'{b:#04x}' for b in params]}  ->  [{hex_out}]")
+        print(
+            f"  {label:50s} sent ctrl={ctrl:#04x} params={[f'{b:#04x}' for b in params]}  ->  [{hex_out}]"
+        )
         return r
     except Exception as e:
         print(f"  {label:50s} ERROR: {e}")
