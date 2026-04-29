@@ -3,12 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-    <title>Dobot Controller</title>
+        <title>DobotHub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
       href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script src="https://unpkg.com/blockly/blockly.min.js"></script>
+    <script src="https://unpkg.com/blockly/python_compressed.js"></script>
     <style>
       *,
       *::before,
@@ -22,28 +24,35 @@
         height: 100%;
       }
       :root {
-        --bg: #16161e;
-        --panel: #20202c;
-        --deep: #111118;
-        --border: #2a2a3e;
-        --sep: #232334;
-        --text: #d0d0e4;
-        --dim: #6060a0;
-        --muted: #3e3e5a;
-        --accent: #3d7fe8;
-        --accent-h: #5491f0;
-        --accent-p: #2a5db8;
-        --amber: #e89220;
-        --amber-h: #f0a834;
-        --danger: #cf3545;
-        --danger-h: #e04555;
-        --success: #1fc46e;
-        --success-h: #2ed880;
-        --warn: #c89c20;
-        --ok: #1fc46e;
-        --bad: #cf3545;
-        --mono: "Share Tech Mono", "Consolas", monospace;
-        --ui: "Rajdhani", "Segoe UI", sans-serif;
+        /* DobotHub Theme Palette: Dark Gray & Orange */
+        --bg: #0e0e0e;
+        --panel: #1c1c1c;
+        --deep: #141414;
+        --border: #262626;
+        --sep: #222222;
+        --text: #ffffff;
+        --dim: #b0b0b0;
+        --muted: #7a7a7a;
+        
+        /* Dobot Orange */
+        --accent: #ff9500;
+        --accent-h: #ffad33;
+        --accent-p: #cc7700;
+        
+        /* Status Colors */
+        --amber: #ffb300;
+        --amber-h: #ffc433;
+        --danger: #cf3535;
+        --danger-h: #df4444;
+        --success: #28a745;
+        --success-h: #31c252;
+        --warn: #eab308;
+        --ok: #1abc6a;
+        --bad: #cf3535;
+        
+        /* Fonts */
+        --mono: "Consolas", monospace;
+        --ui: "Inter", "Roboto", "Arial", sans-serif;
       }
       body {
         background: var(--bg);
@@ -60,26 +69,88 @@
       header {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 0 16px;
-        height: 50px;
+        justify-content: space-between;
+        padding: 0 20px;
+        height: 60px;
         background: var(--deep);
         border-bottom: 1px solid var(--border);
         flex-shrink: 0;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+      }
+      body {
+        padding-top: 60px;
+        box-sizing: border-box;
       }
       .brand {
         font-family: var(--ui);
-        font-weight: 700;
-        font-size: 13px;
-        letter-spacing: 3px;
-        color: var(--amber);
-        text-transform: uppercase;
-        margin-right: auto;
+        font-weight: 800;
+        font-size: 24px;
+        letter-spacing: -0.5px;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
       }
       .brand em {
-        color: var(--dim);
+        background: var(--accent);
+        color: #000;
         font-style: normal;
-        font-weight: 500;
+        font-weight: 800;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .header-center {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        margin: 0 40px;
+      }
+      #search-bar {
+        width: 100%;
+        max-width: 500px;
+        margin: 0;
+        height: 38px;
+        padding: 0 14px;
+        border-radius: 999px;
+        background: #1c1c1c;
+        border: 1px solid #262626;
+        color: #ffffff;
+        font-family: var(--ui);
+        font-size: 14px;
+        transition: all 0.18s ease-in-out;
+      }
+      #search-bar::placeholder {
+        color: #7a7a7a;
+      }
+      #search-bar:focus {
+        border-color: #ff9500;
+        box-shadow: none;
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+      .user-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: #333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: #fff;
+        cursor: pointer;
+        border: 2px solid #222;
+      }
+      .user-avatar:hover {
+        border-color: var(--accent);
       }
       .sdot {
         width: 8px;
@@ -124,54 +195,124 @@
         font-weight: 500;
         min-width: 100px;
         outline: none;
+        appearance: none;
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%237d8392%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+        background-repeat: no-repeat;
+        background-position: right 6px center;
+        padding-right: 24px;
       }
+      select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(255,107,0,0.2);
+      }
+      
+      /* ── Inputs ── */
+      input[type=number], input[type=text] {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 5px 8px;
+        font-family: var(--ui);
+        font-size: 13px;
+        outline: none;
+        transition: all 0.2s;
+      }
+      input[type=number]:focus, input[type=text]:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(255,107,0,0.2);
+      }
+
+      /* ── Sliders ── */
+      input[type=range] {
+        -webkit-appearance: none;
+        width: 100%;
+        background: transparent;
+      }
+      input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        height: 14px;
+        width: 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+        margin-top: -5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      }
+      input[type=range]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 4px;
+        cursor: pointer;
+        background: var(--border);
+        border-radius: 2px;
+      }
+      
+      /* ── Scrollbars ── */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: var(--bg); border-radius: 4px;}
+      ::-webkit-scrollbar-thumb { background: #3d3d3d; border-radius: 4px;}
+      ::-webkit-scrollbar-thumb:hover { background: #4d4d4d; }
 
       /* ── Buttons ── */
       button {
         background: var(--accent);
-        color: #fff;
+        color: #000;
         border: none;
-        border-radius: 3px;
-        padding: 5px 12px;
+        border-radius: 6px;
+        padding: 6px 14px;
         cursor: pointer;
         font-size: 13px;
         font-family: var(--ui);
-        font-weight: 600;
-        letter-spacing: 0.4px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
         white-space: nowrap;
-        transition: background 0.1s;
+        transition: all 0.18s ease-in-out;
+        box-shadow: none;
       }
       button:hover:not(:disabled) {
         background: var(--accent-h);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
       }
       button:active:not(:disabled) {
         background: var(--accent-p);
+        transform: translateY(0);
+        box-shadow: none;
       }
       button.ghost {
         background: transparent;
-        border: 1px solid var(--border);
-        color: var(--dim);
+        border: 1px solid #333333;
+        color: #ffffff;
+        box-shadow: none;
       }
       button.ghost:hover:not(:disabled) {
-        border-color: var(--dim);
-        background: var(--sep);
-        color: var(--text);
+        border-color: #555555;
+        background: #1a1a1a;
+        color: #ffffff;
       }
       button.danger {
         background: var(--danger);
+        color: #fff;
+        box-shadow: 0 2px 4px rgba(207, 53, 53, 0.2);
       }
       button.danger:hover:not(:disabled) {
         background: var(--danger-h);
+        box-shadow: 0 4px 8px rgba(223, 68, 68, 0.4);
       }
       button.success {
         background: var(--success);
+        color: #fff;
+        box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
       }
       button.success:hover:not(:disabled) {
         background: var(--success-h);
+        box-shadow: 0 4px 8px rgba(49, 194, 82, 0.4);
       }
       button:disabled {
         background: var(--sep) !important;
         color: var(--muted) !important;
+        box-shadow: none !important;
+        transform: none !important;
         cursor: not-allowed;
       }
       .btn-row {
@@ -180,6 +321,35 @@
         flex-wrap: wrap;
         align-items: center;
         margin-top: 6px;
+      }
+
+        /* ── Tabs ── */
+      .tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 7px;
+        background: #1a1a1a;
+        padding: 4px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+      }
+      .tabs button {
+        box-shadow: none !important;
+        border: none !important;
+        border-radius: 4px;
+        flex: 1;
+        opacity: 0.7;
+        background: transparent;
+      }
+      .tabs button.active {
+        background: var(--panel) !important;
+        color: var(--accent) !important;
+        opacity: 1;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+      }
+      .tabs button:hover:not(.active) {
+        background: rgba(255,255,255,0.05) !important;
+        opacity: 1;
       }
 
       /* ── Layout ── */
@@ -210,11 +380,16 @@
       .panel {
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 10px 12px;
+        border-radius: 6px;
+        padding: 12px 14px;
         flex-shrink: 0;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 2px 8px rgba(0,0,0,0.2);
+        transition: border-color 0.2s ease;
       }
-      #panel-seq {
+      .panel:hover {
+        border-color: #333333;
+      }
+      #panel-seq, #panel-script {
         flex: 1;
         display: flex;
         flex-direction: column;
@@ -688,20 +863,54 @@
         background: var(--muted);
         border-radius: 2px;
       }
+      /* ── Script Editor Dark Theme overrides ── */
+      .blocklySvg {
+        background-color: var(--bg) !important;
+      }
+      .blocklyToolboxDiv {
+        background-color: var(--panel) !important;
+        border-right: 1px solid var(--border) !important;
+      }
+      .blocklyTreeLabel {
+        color: var(--text) !important;
+        font-family: var(--ui) !important;
+      }
+      .blocklyTreeRow:hover {
+        background-color: var(--border) !important;
+      }
+      .blocklyTreeSelected .blocklyTreeLabel {
+        color: #fff !important;
+      }
+      .blocklyTreeSelected .blocklyTreeRow {
+        background-color: var(--accent) !important;
+      }
+      .blocklyFlyoutBackground {
+        fill: var(--panel) !important;
+      }
+      .blocklyFlyout {
+        border-right: 1px solid var(--border) !important;
+      }
+
     </style>
   </head>
   <body>
     <!-- Header -->
     <header>
-      <span class="brand">DOBOT <em>CONTROLLER</em></span>
-      <span class="sdot" id="dot"></span>
-      <span id="status-text">DISCONNECTED</span>
-      <select id="port-select">
-        <option value="">No ports</option>
-      </select>
-      <button id="btn-refresh" class="ghost">Refresh</button>
-      <button id="btn-connect">Connect</button>
-      <button id="btn-home" class="ghost">Home</button>
+      <div class="brand">DOBOT <em>HUB</em></div>
+      <div class="header-center">
+        <input type="text" id="search-bar" placeholder="Search sequences, blocks...">
+      </div>
+      <div class="header-right">
+        <span class="sdot" id="dot"></span>
+        <span id="status-text">DISCONNECTED</span>
+        <select id="port-select">
+          <option value="">No ports</option>
+        </select>
+        <button id="btn-refresh" class="ghost">↻</button>
+        <button id="btn-connect" class="primary">Connect</button>
+        <button id="btn-home" class="ghost">Home</button>
+        <div class="user-avatar" title="Jonas Hover">J</div>
+      </div>
     </header>
 
     <!-- Main -->
@@ -871,6 +1080,11 @@
 
       <!-- Right: Sequence Editor -->
       <div id="col-seq">
+        <div class="tabs">
+          <button id="tab-seq-btn" class="active">Visueller Sequencer</button>
+          <button id="tab-script-btn" class="ghost">Blockly 🐍 Script</button>
+        </div>
+
         <div class="panel" id="panel-seq">
           <div class="ph">
             <span>Sequence Editor</span>
@@ -923,8 +1137,109 @@
             <input type="text" id="inp-name" value="untitled" />
           </div>
         </div>
+
+        <div class="panel" id="panel-script" style="display:none; flex:1; flex-direction:column;">
+          <div class="ph">Blockly Script Editor</div>
+          <div id="blocklyDiv" style="flex:1; width:100%; border:1px solid var(--border); border-radius:3px;"></div>
+          <!-- Versteckter Texteditor als Backup/Fallback -->
+          <textarea id="script-editor" style="display:none; flex:0.3; background:var(--deep); color:var(--text); border:1px solid var(--border); border-radius:3px; font-family:var(--mono); font-size:13px; padding:8px; resize:none; outline:none; white-space:pre; overflow:auto; margin-top:5px;" spellcheck="false" readonly></textarea>
+          <div class="btn-row" style="margin-top:10px;">
+            <button id="btn-run-script" class="success">Run Blocks (Alt+R)</button>
+          <button id="btn-stop-script" class="danger">Stop Script</button>
+          <button id="btn-toggle-code" class="ghost">Zeige Python Code</button>
+        </div>
       </div>
     </div>
+
+    <!-- Blockly Toolbox XML -->
+    <xml id="toolbox" style="display: none">
+      <category name="Dobot" colour="230">
+        <block type="dobot_start"></block>
+        <block type="dobot_stop"></block>
+        <block type="dobot_log">
+          <value name="MSG">
+            <shadow type="text">
+              <field name="TEXT">Hello Dobot</field>
+            </shadow>
+          </value>
+        </block>
+        <block type="dobot_move_to">
+          <value name="X"><shadow type="math_number"><field name="NUM">200</field></shadow></value>
+          <value name="Y"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+          <value name="Z"><shadow type="math_number"><field name="NUM">50</field></shadow></value>
+          <value name="R"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        </block>
+        <block type="dobot_move_to_current"></block>
+        <block type="dobot_suction"></block>
+        <block type="dobot_wait">
+          <value name="SEC"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        </block>
+        <block type="dobot_conveyor">
+          <value name="SPEED"><shadow type="math_number"><field name="NUM">0.5</field></shadow></value>
+          <value name="DIR"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        </block>
+        <block type="dobot_color_sensor"></block>
+      </category>
+      <category name="Logik" colour="210">
+        <block type="controls_if"></block>
+        <block type="logic_compare"></block>
+        <block type="logic_operation"></block>
+        <block type="logic_negate"></block>
+        <block type="logic_boolean"></block>
+        <block type="logic_null"></block>
+        <block type="logic_ternary"></block>
+      </category>
+      <category name="Schleifen" colour="120">
+        <block type="dobot_if">
+          <value name="COND"><shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow></value>
+        </block>
+        <block type="dobot_if_else">
+          <value name="COND"><shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow></value>
+        </block>
+        <block type="dobot_if_elif_else">
+          <value name="COND1"><shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow></value>
+          <value name="COND2"><shadow type="logic_boolean"><field name="BOOL">FALSE</field></shadow></value>
+        </block>
+        <block type="controls_repeat_ext">
+          <value name="TIMES"><shadow type="math_number"><field name="NUM">5</field></shadow></value>
+        </block>
+        <block type="controls_whileUntil"></block>
+        <block type="controls_for">
+          <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+          <value name="TO"><shadow type="math_number"><field name="NUM">10</field></shadow></value>
+          <value name="BY"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+        </block>
+        <block type="controls_forEach"></block>
+        <block type="controls_flow_statements"></block>
+        <block type="dobot_not_stopped"></block>
+      </category>
+      <category name="Variablen" colour="330" custom="VARIABLE"></category>
+      <category name="Funktionen" colour="290" custom="PROCEDURE"></category>
+      <category name="Mathematik" colour="230">
+        <block type="math_number"></block>
+        <block type="math_arithmetic"></block>
+        <block type="math_single"></block>
+        <block type="math_trig"></block>
+        <block type="math_constant"></block>
+        <block type="math_number_property"></block>
+        <block type="math_round"></block>
+        <block type="math_on_list"></block>
+        <block type="math_modulo"></block>
+        <block type="math_constrain"></block>
+        <block type="math_random_int">
+          <value name="FROM"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+          <value name="TO"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+        </block>
+        <block type="math_random_float"></block>
+      </category>
+      <category name="Text" colour="160">
+        <block type="text"></block>
+        <block type="text_join"></block>
+        <block type="text_append"></block>
+        <block type="text_length"></block>
+        <block type="text_isEmpty"></block>
+      </category>
+    </xml>
 
     <!-- Log -->
     <div id="log-panel">
@@ -956,6 +1271,311 @@
     </div>
 
     <script>
+      // ------------- Blockly Blocks Definition -------------
+      const PY =
+        (Blockly.Python && Blockly.Python.pythonGenerator) || Blockly.Python;
+      const PY_ORDER_NONE = PY?.ORDER_NONE ?? 99;
+      const PY_ORDER_REL = PY?.ORDER_RELATIONAL ?? PY_ORDER_NONE;
+      const PY_ORDER_NOT = PY?.ORDER_LOGICAL_NOT ?? PY_ORDER_NONE;
+
+      function registerPyBlock(type, fn) {
+        if (!PY) return;
+        // Blockly 10+ expects generators in `forBlock`; older versions used direct assignment.
+        if (PY.forBlock) PY.forBlock[type] = fn;
+        PY[type] = fn;
+      }
+
+      function generatePyCode() {
+        if (!PY || typeof PY.workspaceToCode !== "function") {
+          throw new Error(
+            "Blockly Python generator not available (check loaded Blockly scripts).",
+          );
+        }
+        return PY.workspaceToCode(blocklyWorkspace);
+      }
+
+      function xmlTextToDom(text) {
+        if (Blockly.Xml?.textToDom) return Blockly.Xml.textToDom(text);
+        if (Blockly.utils?.xml?.textToDom) return Blockly.utils.xml.textToDom(text);
+        throw new Error("Blockly XML parser not available.");
+      }
+
+      function pyStatementSuite(generator, block, inputName) {
+        const stmt = generator.statementToCode(block, inputName);
+        return stmt && stmt.trim() ? stmt : "  pass\n";
+      }
+
+      Blockly.Blocks["dobot_start"] = {
+        init: function() {
+          this.appendDummyInput().appendField("▶ START SCRIPT");
+          this.setNextStatement(true, null);
+          this.setColour(120);
+          this.setTooltip("Markiert den Start des Programms");
+        }
+      };
+      registerPyBlock("dobot_start", function(block) {
+        return "# --- SCRIPT START ---\n";
+      });
+
+      Blockly.Blocks["dobot_stop"] = {
+        init: function() {
+          this.appendDummyInput().appendField("🛑 SCRIPT STOPPEN");
+          this.setPreviousStatement(true, null);
+          this.setColour(0);
+          this.setTooltip("Bricht das aktuelle Programm sofort ab");
+        }
+      };
+      registerPyBlock("dobot_stop", function(block) {
+        return "core.seq_stop()\nraise Exception('Script stopped by block')\n";
+      });
+
+      Blockly.Blocks["dobot_log"] = {
+        init: function() {
+          this.appendValueInput("MSG").setCheck(null).appendField("Log");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+        }
+      };
+      registerPyBlock("dobot_log", function(block, generator) {
+        const g = generator || PY;
+        var msg = g.valueToCode(block, "MSG", PY_ORDER_NONE) || '""';
+        return "log(" + msg + ")\n";
+      });
+
+      Blockly.Blocks["dobot_move_to"] = {
+        init: function() {
+          this.appendDummyInput().appendField("Move To");
+          this.appendValueInput("X").setCheck("Number").appendField("X");
+          this.appendValueInput("Y").setCheck("Number").appendField("Y");
+          this.appendValueInput("Z").setCheck("Number").appendField("Z");
+          this.appendValueInput("R").setCheck("Number").appendField("R");
+          this.setInputsInline(true);
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+        }
+      };
+      registerPyBlock("dobot_move_to", function(block, generator) {
+        const g = generator || PY;
+        var x = g.valueToCode(block, "X", PY_ORDER_NONE) || "0";
+        var y = g.valueToCode(block, "Y", PY_ORDER_NONE) || "0";
+        var z = g.valueToCode(block, "Z", PY_ORDER_NONE) || "0";
+        var r = g.valueToCode(block, "R", PY_ORDER_NONE) || "0";
+        return "sync_move_to(" + x + ", " + y + ", " + z + ", " + r + ")\n";
+      });
+
+      Blockly.Blocks["dobot_move_to_current"] = {
+        init: function() {
+          this.appendDummyInput()
+            .appendField("Gehe zu Position")
+            .appendField("X")
+            .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "X")
+            .appendField("Y")
+            .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "Y");
+          this.appendDummyInput()
+            .appendField("Z")
+            .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "Z")
+            .appendField("R")
+            .appendField(new Blockly.FieldNumber(0, -360, 360, 0.1), "R");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+          this.setTooltip(
+            "Setzt beim Einfügen automatisch die aktuelle Roboterposition",
+          );
+          this._seededFromLivePos = false;
+        },
+        onchange: function(event) {
+          if (!event || this._seededFromLivePos) return;
+          if (!this.workspace || this.workspace.isFlyout) return;
+          const createEvt = Blockly.Events?.BLOCK_CREATE || "create";
+          if (event.type !== createEvt) return;
+          if (!Array.isArray(event.ids) || !event.ids.includes(this.id)) return;
+          const pos = typeof S !== "undefined" ? S.pos : null;
+          if (!pos) return;
+          const fmt = (v) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? String(Number(n.toFixed(2))) : "0";
+          };
+          this.setFieldValue(fmt(pos.X), "X");
+          this.setFieldValue(fmt(pos.Y), "Y");
+          this.setFieldValue(fmt(pos.Z), "Z");
+          this.setFieldValue(fmt(pos.R), "R");
+          this._seededFromLivePos = true;
+        },
+      };
+      registerPyBlock("dobot_move_to_current", function(block) {
+        const x = Number(block.getFieldValue("X")) || 0;
+        const y = Number(block.getFieldValue("Y")) || 0;
+        const z = Number(block.getFieldValue("Z")) || 0;
+        const r = Number(block.getFieldValue("R")) || 0;
+        return "sync_move_to(" + x + ", " + y + ", " + z + ", " + r + ")\n";
+      });
+
+      Blockly.Blocks["dobot_suction"] = {
+        init: function() {
+          this.appendDummyInput()
+              .appendField("Suction")
+              .appendField(new Blockly.FieldDropdown([["ON", "True"], ["OFF", "False"]]), "ON");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+        }
+      };
+      registerPyBlock("dobot_suction", function(block) {
+        var on = block.getFieldValue("ON");
+        return "core.set_vacuum(" + on + ")\n";
+      });
+
+      Blockly.Blocks["dobot_wait"] = {
+        init: function() {
+          this.appendDummyInput().appendField("Wait");
+          this.appendValueInput("SEC").setCheck("Number");
+          this.appendDummyInput().appendField("seconds");
+          this.setInputsInline(true);
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+        }
+      };
+      registerPyBlock("dobot_wait", function(block, generator) {
+        const g = generator || PY;
+        var sec = g.valueToCode(block, "SEC", PY_ORDER_NONE) || "0";
+        return "time.sleep(" + sec + ")\n";
+      });
+
+      Blockly.Blocks["dobot_conveyor"] = {
+        init: function() {
+          this.appendDummyInput().appendField("Conveyor Belt");
+          this.appendValueInput("SPEED").setCheck("Number").appendField("Speed (0.0-1.0)");
+          this.appendValueInput("DIR").setCheck("Number").appendField("Direction (1/-1)");
+          this.setInputsInline(true);
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+        }
+      };
+      registerPyBlock("dobot_conveyor", function(block, generator) {
+        const g = generator || PY;
+        var speed = g.valueToCode(block, "SPEED", PY_ORDER_NONE) || "0.5";
+        var dir = g.valueToCode(block, "DIR", PY_ORDER_NONE) || "1";
+        return "device.conveyor_belt(" + speed + ", " + dir + ", 0)\n";
+      });
+
+      Blockly.Blocks["dobot_color_sensor"] = {
+        init: function() {
+          this.appendDummyInput()
+              .appendField("Read Color")
+              .appendField(new Blockly.FieldDropdown([["Red", "0"], ["Green", "1"], ["Blue", "2"]]), "COLOR");
+          this.setOutput(true, "Boolean");
+          this.setColour(230);
+        }
+      };
+      registerPyBlock("dobot_color_sensor", function(block, generator) {
+        const g = generator || PY;
+        var c = block.getFieldValue("COLOR");
+        if (g.definitions_) {
+          g.definitions_.enable_color =
+            "core._color_enabled = Dobot.PORT_GP2\ndevice.set_color(enable=True, port=Dobot.PORT_GP2)";
+        }
+        return [
+          "(device.get_color(port=Dobot.PORT_GP2)[" + c + "] == 1)",
+          PY_ORDER_REL,
+        ];
+      });
+
+      Blockly.Blocks["dobot_not_stopped"] = {
+        init: function() {
+          this.appendDummyInput().appendField("Script not stopped");
+          this.setOutput(true, "Boolean");
+          this.setColour(120);
+        }
+      };
+      registerPyBlock("dobot_not_stopped", function(block) {
+        return ["(not core.seq_stop_evt.is_set())", PY_ORDER_NOT];
+      });
+
+      Blockly.Blocks["dobot_if"] = {
+        init: function() {
+          this.appendValueInput("COND")
+            .setCheck("Boolean")
+            .appendField("if");
+          this.appendStatementInput("DO").appendField("do");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(120);
+          this.setTooltip("Führt den Block nur aus, wenn die Bedingung wahr ist");
+        }
+      };
+      registerPyBlock("dobot_if", function(block, generator) {
+        const g = generator || PY;
+        const cond = g.valueToCode(block, "COND", PY_ORDER_NONE) || "False";
+        const body = pyStatementSuite(g, block, "DO");
+        return "if " + cond + ":\n" + body;
+      });
+
+      Blockly.Blocks["dobot_if_else"] = {
+        init: function() {
+          this.appendValueInput("COND")
+            .setCheck("Boolean")
+            .appendField("if");
+          this.appendStatementInput("DO").appendField("do");
+          this.appendStatementInput("ELSE").appendField("else");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(120);
+          this.setTooltip("Führt je nach Bedingung den if- oder else-Zweig aus");
+        }
+      };
+      registerPyBlock("dobot_if_else", function(block, generator) {
+        const g = generator || PY;
+        const cond = g.valueToCode(block, "COND", PY_ORDER_NONE) || "False";
+        const doBody = pyStatementSuite(g, block, "DO");
+        const elseBody = pyStatementSuite(g, block, "ELSE");
+        return "if " + cond + ":\n" + doBody + "else:\n" + elseBody;
+      });
+
+      Blockly.Blocks["dobot_if_elif_else"] = {
+        init: function() {
+          this.appendValueInput("COND1")
+            .setCheck("Boolean")
+            .appendField("if");
+          this.appendStatementInput("DO1").appendField("do");
+          this.appendValueInput("COND2")
+            .setCheck("Boolean")
+            .appendField("else if");
+          this.appendStatementInput("DO2").appendField("do");
+          this.appendStatementInput("ELSE").appendField("else");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(120);
+          this.setTooltip("if / else if / else Verzweigung");
+        }
+      };
+      registerPyBlock("dobot_if_elif_else", function(block, generator) {
+        const g = generator || PY;
+        const cond1 = g.valueToCode(block, "COND1", PY_ORDER_NONE) || "False";
+        const cond2 = g.valueToCode(block, "COND2", PY_ORDER_NONE) || "False";
+        const do1 = pyStatementSuite(g, block, "DO1");
+        const do2 = pyStatementSuite(g, block, "DO2");
+        const elseBody = pyStatementSuite(g, block, "ELSE");
+        return (
+          "if " +
+          cond1 +
+          ":\n" +
+          do1 +
+          "elif " +
+          cond2 +
+          ":\n" +
+          do2 +
+          "else:\n" +
+          elseBody
+        );
+      });
+
+      let blocklyWorkspace = null;
+
       // ── State ─────────────────────────────────────────────────────────────────────
       const S = {
         connected: false,
@@ -1787,6 +2407,104 @@
             S.selected++;
           }
         };
+
+        // Script Editor Tabs
+        $("tab-seq-btn").onclick = () => {
+          $("tab-seq-btn").className = "active";
+          $("tab-script-btn").className = "ghost";
+          $("panel-seq").style.display = "flex";
+          $("panel-script").style.display = "none";
+        };
+        $("tab-script-btn").onclick = () => {
+          $("tab-script-btn").className = "active";
+          $("tab-seq-btn").className = "ghost";
+          $("panel-seq").style.display = "none";
+          $("panel-script").style.display = "flex";
+          if (!blocklyWorkspace) {
+            blocklyWorkspace = Blockly.inject('blocklyDiv', {
+              toolbox: document.getElementById('toolbox'),
+              scrollbars: true,
+              theme: Blockly.Theme ? Blockly.Theme.defineTheme('dark', {
+                'base': Blockly.Themes.Classic,
+                'componentStyles': {
+                  'workspaceBackgroundColour': '#121212',
+                  'toolboxBackgroundColour': '#1e1e1e',
+                  'toolboxForegroundColour': '#eeeeee',
+                  'flyoutBackgroundColour': '#1a1a1a',
+                  'flyoutForegroundColour': '#ccc',
+                  'flyoutOpacity': 1,
+                  'scrollbarColour': '#333333',
+                  'insertionMarkerColour': '#fff',
+                  'insertionMarkerOpacity': 0.3,
+                  'scrollbarOpacity': 1,
+                  'cursorColour': '#d0d0d0',
+                }
+              }) : undefined
+            });
+            const storedState = localStorage.getItem('dobot_hub_blockly');
+            if (storedState) {
+              try {
+                const dom = xmlTextToDom(storedState);
+                Blockly.Xml.domToWorkspace(dom, blocklyWorkspace);
+              } catch (err) {
+                console.warn("Failed to restore Blockly state", err);
+              }
+            }
+            blocklyWorkspace.addChangeListener(() => {
+              const dom = Blockly.Xml.workspaceToDom(blocklyWorkspace);
+              const xmlText = Blockly.Xml.domToText(dom);
+              localStorage.setItem('dobot_hub_blockly', xmlText);
+            });
+          } else {
+            Blockly.svgResize(blocklyWorkspace);
+          }
+        };
+        $("btn-run-script").onclick = () => {
+          try {
+            let code;
+            if (blocklyWorkspace) {
+              code = generatePyCode();
+            } else {
+              code = $("script-editor").value;
+            }
+            post("/api/run_script", { code: code });
+          } catch (err) {
+            const msg = err?.message || String(err);
+            addLog({
+              level: "ERROR",
+              ts: new Date().toLocaleTimeString(),
+              msg: `Blockly code generation failed: ${msg}`,
+            });
+            console.error("Blockly code generation failed", err);
+          }
+        };
+        $("btn-toggle-code").onclick = () => {
+          const ta = $("script-editor");
+          if (ta.style.display === "none") {
+             ta.style.display = "block";
+             if (blocklyWorkspace) {
+               try {
+                 ta.value = generatePyCode();
+               } catch (err) {
+                 ta.value = `# Failed to generate code:\n# ${
+                   err?.message || String(err)
+                 }`;
+               }
+             }
+          } else {
+             ta.style.display = "none";
+          }
+        };
+        $("btn-stop-script").onclick = () => {
+          post("/api/sequence/stop"); // reuse existing stop which cancels everything
+        };
+
+        document.addEventListener("keydown", (e) => {
+          if (e.altKey && e.key === "r") {
+            $("btn-run-script").click();
+            e.preventDefault();
+          }
+        });
 
         $("btn-play").onclick = () =>
           post(S.playing ? "/api/sequence/pause" : "/api/sequence/play");

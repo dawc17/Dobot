@@ -725,6 +725,41 @@ class DobotCore:
 
     # ── Sequence playback ─────────────────────────────────────────────────────
 
+    def run_script(self, code: str):
+        if not self.is_connected:
+            self.logger.warning("Not connected")
+            return
+        if self.seq_playing:
+            self.logger.warning("Playback running")
+            return
+            
+        def _do():
+            self.seq_playing = True
+            self.seq_stop_evt.clear()
+            self._push_seq_state()
+            try:
+                def sync_move_to(x, y, z, r):
+                    if self.seq_stop_evt.is_set(): return
+                    self._safe_move(x, y, z, r)
+                    
+                env = {
+                    "core": self,
+                    "device": self.device,
+                    "time": time,
+                    "log": self.logger.info,
+                    "sync_move_to": sync_move_to,
+                    "Dobot": Dobot
+                }
+                exec(code, env)
+            except Exception as e:
+                self.logger.error(f"Script error: {e}")
+            finally:
+                self.seq_playing = False
+                self.seq_current = -1
+                self._push_seq_state()
+                
+        threading.Thread(target=_do, daemon=True).start()
+
     def seq_play(self):
         if not self.is_connected:
             self.logger.warning("Not connected")
@@ -1248,6 +1283,14 @@ def api_seq_pause():
     core.seq_pause_toggle()
     return ok()
 
+
+@app.post("/api/run_script")
+def api_run_script():
+    d = request.get_json(force=True) or {}
+    code = d.get("code")
+    if code:
+        core.run_script(code)
+    return ok()
 
 @app.post("/api/sequence/stop")
 def api_seq_stop():
