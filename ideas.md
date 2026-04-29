@@ -20,9 +20,6 @@
   IO trigger / wait for input
   A "Wait for IO" step that pauses until a digital input pin goes high — lets external sensors (buttons, limit switches on GP ports) gate the sequence.
 
-  Named positions / position bank
-  Save named positions (like "above conveyor", "red bin", "home") and reference them by name in steps instead of raw XYZ. Makes sequences readable and easy to update when positions shift.
-
   Sequence chaining
   A "Run Sequence" step that calls another saved sequence file — lets you build reusable sub-routines (e.g. a "pick" routine and a "place" routine called from multiple main sequences).
 

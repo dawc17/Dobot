@@ -1180,7 +1180,7 @@
         </block>
         <block type="dobot_color_sensor"></block>
       </category>
-      <category name="Logik" colour="210">
+      <category name="Logic" colour="210">
         <block type="controls_if"></block>
         <block type="logic_compare"></block>
         <block type="logic_operation"></block>
@@ -1213,9 +1213,9 @@
         <block type="controls_flow_statements"></block>
         <block type="dobot_not_stopped"></block>
       </category>
-      <category name="Variablen" colour="330" custom="VARIABLE"></category>
-      <category name="Funktionen" colour="290" custom="PROCEDURE"></category>
-      <category name="Mathematik" colour="230">
+      <category name="Variables" colour="330" custom="VARIABLE"></category>
+      <category name="Functions" colour="290" custom="PROCEDURE"></category>
+      <category name="Math" colour="230">
         <block type="math_number"></block>
         <block type="math_arithmetic"></block>
         <block type="math_single"></block>
@@ -1368,7 +1368,7 @@
       Blockly.Blocks["dobot_move_to_current"] = {
         init: function() {
           this.appendDummyInput()
-            .appendField("Gehe zu Position")
+            .appendField("Go to Position")
             .appendField("X")
             .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "X")
             .appendField("Y")
@@ -1382,7 +1382,7 @@
           this.setNextStatement(true, null);
           this.setColour(230);
           this.setTooltip(
-            "Setzt beim Einfügen automatisch die aktuelle Roboterposition",
+            "Automatically sets the current robot position when inserted",
           );
           this._seededFromLivePos = false;
         },
