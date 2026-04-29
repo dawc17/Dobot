@@ -16,6 +16,7 @@ from pydobotplus import Dobot
 from serial.tools import list_ports
 
 SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
+SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 POSITIONS_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "positions.json"
@@ -528,6 +529,56 @@ class DobotCore:
             return []
         return sorted(f for f in os.listdir(SEQUENCES_DIR) if f.endswith(".json"))
 
+    # ── Script file management ────────────────────────────────────────────────
+
+    def script_save(self, name: str, workspace_xml: str, code: str) -> str:
+        safe = "".join(c for c in str(name) if c.isalnum() or c in "-_ ") or "script"
+        safe = safe.strip() or "script"
+        os.makedirs(SCRIPTS_DIR, exist_ok=True)
+        path = os.path.join(SCRIPTS_DIR, f"{safe}.json")
+        payload = {
+            "name": safe,
+            "version": 1,
+            "workspace_xml": str(workspace_xml or ""),
+            "code": str(code or ""),
+            "saved_at": int(time.time()),
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        self.logger.info(f"Script saved: {safe}")
+        return safe
+
+    def script_files(self) -> List[str]:
+        if not os.path.isdir(SCRIPTS_DIR):
+            return []
+        return sorted(f for f in os.listdir(SCRIPTS_DIR) if f.endswith(".json"))
+
+    def script_load(self, filename: str) -> Optional[dict]:
+        fn = os.path.basename(str(filename or ""))
+        if not fn:
+            return None
+        if not fn.endswith(".json"):
+            fn += ".json"
+        path = os.path.join(SCRIPTS_DIR, fn)
+        if not os.path.isfile(path):
+            return None
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            name = str(data.get("name") or fn.replace(".json", ""))
+            workspace_xml = str(data.get("workspace_xml") or "")
+            code = str(data.get("code") or "")
+            self.logger.info(f"Script loaded: {name}")
+            return {
+                "name": name,
+                "workspace_xml": workspace_xml,
+                "code": code,
+                "filename": fn,
+            }
+        except Exception as e:
+            self.logger.error(f"Script load failed: {e}")
+            return None
+
     # ── Named positions ───────────────────────────────────────────────────────
 
     def _load_positions(self):
@@ -732,32 +783,182 @@ class DobotCore:
         if self.seq_playing:
             self.logger.warning("Playback running")
             return
-            
+
         def _do():
+            class _ScriptStopped(Exception):
+                pass
+
             self.seq_playing = True
             self.seq_stop_evt.clear()
             self._push_seq_state()
+            script_stopped_by_user = False
+            script_conv_state = {
+                "cmd": None,  # tuple(speed, dir, iface)
+                "managed": False,
+            }
+
             try:
+                def _check_stopped():
+                    if self.seq_stop_evt.is_set():
+                        raise _ScriptStopped()
+
                 def sync_move_to(x, y, z, r):
-                    if self.seq_stop_evt.is_set(): return
+                    _check_stopped()
                     self._safe_move(x, y, z, r)
-                    
+
+                def sync_move_named(name, dx=0, dy=0, dz=0, dr=0):
+                    _check_stopped()
+                    n = str(name or "").strip()
+                    pos = self.named_positions.get(n)
+                    if not pos:
+                        self.logger.error(f"Named position '{n}' not found")
+                        return
+                    try:
+                        x = float(pos["x"]) + float(dx)
+                        y = float(pos["y"]) + float(dy)
+                        z = float(pos["z"]) + float(dz)
+                        r = float(pos["r"]) + float(dr)
+                    except Exception:
+                        self.logger.error(
+                            f"Invalid named position values for '{n}'"
+                        )
+                        return
+                    self._safe_move(x, y, z, r)
+
+                def script_sleep(seconds=0.0):
+                    try:
+                        s = max(0.0, float(seconds))
+                    except Exception:
+                        s = 0.0
+                    self.seq_stop_evt.wait(timeout=s)
+                    _check_stopped()
+
+                def script_conveyor(speed, direction=1, interface=0):
+                    _check_stopped()
+                    try:
+                        spd = max(0.0, min(1.0, float(speed)))
+                    except Exception:
+                        spd = 0.0
+                    d = 1 if float(direction) >= 0 else -1
+                    try:
+                        i = int(interface)
+                    except Exception:
+                        i = 0
+                    if i not in (0, 1):
+                        i = 0
+                    cmd = (round(spd, 4), d, i)
+                    if script_conv_state["cmd"] == cmd:
+                        return
+                    script_conv_state["cmd"] = cmd
+                    script_conv_state["managed"] = True
+                    self.cmd_conveyor(spd, d, i)
+
+                def ir_detected(port="GP4"):
+                    _check_stopped()
+                    port_map = {
+                        "GP1": Dobot.PORT_GP1,
+                        "GP2": Dobot.PORT_GP2,
+                        "GP4": Dobot.PORT_GP4,
+                        "GP5": Dobot.PORT_GP5,
+                    }
+                    p = port
+                    if isinstance(port, str):
+                        p = port_map.get(port.strip().upper(), Dobot.PORT_GP4)
+                    elif isinstance(port, (int, float)):
+                        idx = max(0, min(3, int(port)))
+                        p = [
+                            Dobot.PORT_GP1,
+                            Dobot.PORT_GP2,
+                            Dobot.PORT_GP4,
+                            Dobot.PORT_GP5,
+                        ][idx]
+                    if self._dev_lock.acquire(timeout=2.0):
+                        try:
+                            if self._ir_enabled != p:
+                                self.device.set_ir(enable=True, port=p)
+                                time.sleep(0.15)
+                                self._ir_enabled = p
+                            return bool(self.device.get_ir(port=p))
+                        except _ScriptStopped:
+                            raise
+                        except Exception as e:
+                            self._ir_enabled = None
+                            self.logger.warning(f"IR read: {e}")
+                            return False
+                        finally:
+                            self._dev_lock.release()
+                    return False
+
+                def debug_ir(port="GP2"):
+                    _check_stopped()
+                    p = str(port or "GP2").strip().upper()
+                    state = ir_detected(p)
+                    self.logger.info(f"IR {p}: {'DETECTED' if state else 'clear'}")
+                    return state
+
+                def stopped():
+                    return self.seq_stop_evt.is_set()
+
+                class _ScriptDeviceProxy:
+                    def __init__(self, real):
+                        self._real = real
+
+                    def conveyor_belt(self, speed, direction=1, interface=0):
+                        return script_conveyor(speed, direction, interface)
+
+                    def __getattr__(self, name):
+                        return getattr(self._real, name)
+
+                class _ScriptTimeProxy:
+                    def __init__(self, real):
+                        self._real = real
+
+                    def sleep(self, seconds=0.0):
+                        return script_sleep(seconds)
+
+                    def __getattr__(self, name):
+                        return getattr(self._real, name)
+
                 env = {
                     "core": self,
-                    "device": self.device,
-                    "time": time,
+                    "device": _ScriptDeviceProxy(self.device),
+                    "time": _ScriptTimeProxy(time),
                     "log": self.logger.info,
                     "sync_move_to": sync_move_to,
-                    "Dobot": Dobot
+                    "sync_move_named": sync_move_named,
+                    "move_named": sync_move_named,
+                    "sleep": script_sleep,
+                    "script_sleep": script_sleep,
+                    "script_conveyor": script_conveyor,
+                    "conveyor_set": script_conveyor,
+                    "named_positions": self.named_positions,
+                    "ir_detected": ir_detected,
+                    "read_ir": ir_detected,
+                    "debug_ir": debug_ir,
+                    "debug_ir_gp2": lambda: debug_ir("GP2"),
+                    "stopped": stopped,
+                    "Dobot": Dobot,
                 }
                 exec(code, env)
+            except _ScriptStopped:
+                script_stopped_by_user = True
+                self.logger.info("Script stopped")
             except Exception as e:
                 self.logger.error(f"Script error: {e}")
             finally:
+                try:
+                    if script_conv_state["managed"] and (
+                        script_stopped_by_user or self.seq_stop_evt.is_set()
+                    ):
+                        last = script_conv_state["cmd"] or (0.0, 1, 0)
+                        if last[0] > 0:
+                            self.cmd_conveyor(0.0, last[1], last[2])
+                except Exception:
+                    pass
                 self.seq_playing = False
                 self.seq_current = -1
                 self._push_seq_state()
-                
+
         threading.Thread(target=_do, daemon=True).start()
 
     def seq_play(self):
@@ -1291,6 +1492,35 @@ def api_run_script():
     if code:
         core.run_script(code)
     return ok()
+
+
+@app.post("/api/scripts/save")
+def api_scripts_save():
+    d = request.get_json(force=True) or {}
+    name = str(d.get("name", "")).strip()
+    if not name:
+        return jsonify(error="name required"), 400
+    saved = core.script_save(
+        name=name,
+        workspace_xml=str(d.get("workspace_xml", "")),
+        code=str(d.get("code", "")),
+    )
+    return jsonify(ok=True, name=saved)
+
+
+@app.get("/api/scripts/files")
+def api_scripts_files():
+    return jsonify(files=core.script_files())
+
+
+@app.post("/api/scripts/load")
+def api_scripts_load():
+    d = request.get_json(force=True) or {}
+    data = core.script_load(d.get("filename", ""))
+    if not data:
+        return jsonify(ok=False, error="not found"), 404
+    return jsonify(ok=True, **data)
+
 
 @app.post("/api/sequence/stop")
 def api_seq_stop():

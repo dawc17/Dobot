@@ -396,6 +396,19 @@
         min-height: 0;
         overflow: hidden;
       }
+      #panel-script:fullscreen,
+      #panel-script:-webkit-full-screen {
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        max-height: none;
+        margin: 0;
+        border-radius: 0;
+        border: none;
+        padding: 12px 14px;
+        box-sizing: border-box;
+        background: var(--panel);
+      }
       .ph {
         font-family: var(--ui);
         font-size: 10px;
@@ -802,6 +815,10 @@
         max-height: 240px;
         overflow-y: auto;
       }
+      #script-load-list {
+        max-height: 240px;
+        overflow-y: auto;
+      }
       .li {
         padding: 8px 10px;
         cursor: pointer;
@@ -1147,7 +1164,14 @@
             <button id="btn-run-script" class="success">Run Blocks (Alt+R)</button>
           <button id="btn-stop-script" class="danger">Stop Script</button>
           <button id="btn-toggle-code" class="ghost">Zeige Python Code</button>
+          <button id="btn-script-fullscreen" class="ghost">Fullscreen</button>
         </div>
+          <div class="btn-row" style="margin-top:8px;">
+            <button id="btn-script-save" class="ghost">Save Script</button>
+            <button id="btn-script-load" class="ghost">Open Script</button>
+            <button id="btn-script-clear" class="danger">Clear Script</button>
+            <input type="text" id="inp-script-name" value="script_1" />
+          </div>
       </div>
     </div>
 
@@ -1170,6 +1194,7 @@
           <value name="R"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
         </block>
         <block type="dobot_move_to_current"></block>
+        <block type="dobot_move_named_script"></block>
         <block type="dobot_suction"></block>
         <block type="dobot_wait">
           <value name="SEC"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
@@ -1179,6 +1204,8 @@
           <value name="DIR"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
         </block>
         <block type="dobot_color_sensor"></block>
+        <block type="dobot_ir_sensor"></block>
+        <block type="dobot_ir_debug"></block>
       </category>
       <category name="Logik" colour="210">
         <block type="controls_if"></block>
@@ -1270,6 +1297,17 @@
       </div>
     </div>
 
+    <!-- Script load picker -->
+    <div id="script-load-modal" class="modal hidden">
+      <div class="mbox">
+        <div class="mtitle">Open Script File</div>
+        <div id="script-load-list"></div>
+        <div class="btn-row" style="margin-top: 10px">
+          <button id="slm-cancel" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       // ------------- Blockly Blocks Definition -------------
       const PY =
@@ -1303,6 +1341,19 @@
       function pyStatementSuite(generator, block, inputName) {
         const stmt = generator.statementToCode(block, inputName);
         return stmt && stmt.trim() ? stmt : "  pass\n";
+      }
+
+      function namedPositionOptions() {
+        let posMap = {};
+        try {
+          posMap = S?.positions || {};
+        } catch (_) {
+          posMap = {};
+        }
+        const names = Object.keys(posMap);
+        if (!names.length) return [["(keine Position)", "__NONE__"]];
+        names.sort((a, b) => a.localeCompare(b, "de"));
+        return names.map((n) => [n, n]);
       }
 
       Blockly.Blocks["dobot_start"] = {
@@ -1413,6 +1464,51 @@
         return "sync_move_to(" + x + ", " + y + ", " + z + ", " + r + ")\n";
       });
 
+      Blockly.Blocks["dobot_move_named_script"] = {
+        init: function() {
+          this.appendDummyInput()
+            .appendField("Gehe zu Named")
+            .appendField(new Blockly.FieldDropdown(namedPositionOptions), "NAME");
+          this.appendDummyInput()
+            .appendField("dX")
+            .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "DX")
+            .appendField("dY")
+            .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "DY");
+          this.appendDummyInput()
+            .appendField("dZ")
+            .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "DZ")
+            .appendField("dR")
+            .appendField(new Blockly.FieldNumber(0, -360, 360, 0.1), "DR");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+          this.setTooltip("Fährt zu einer gespeicherten Named Position mit optionalem Offset");
+        },
+      };
+      registerPyBlock("dobot_move_named_script", function(block) {
+        const name = block.getFieldValue("NAME") || "__NONE__";
+        if (name === "__NONE__") {
+          return "log('No named position selected')\n";
+        }
+        const dx = Number(block.getFieldValue("DX")) || 0;
+        const dy = Number(block.getFieldValue("DY")) || 0;
+        const dz = Number(block.getFieldValue("DZ")) || 0;
+        const dr = Number(block.getFieldValue("DR")) || 0;
+        return (
+          "sync_move_named(" +
+          JSON.stringify(name) +
+          ", " +
+          dx +
+          ", " +
+          dy +
+          ", " +
+          dz +
+          ", " +
+          dr +
+          ")\n"
+        );
+      });
+
       Blockly.Blocks["dobot_suction"] = {
         init: function() {
           this.appendDummyInput()
@@ -1442,7 +1538,7 @@
       registerPyBlock("dobot_wait", function(block, generator) {
         const g = generator || PY;
         var sec = g.valueToCode(block, "SEC", PY_ORDER_NONE) || "0";
-        return "time.sleep(" + sec + ")\n";
+        return "sleep(" + sec + ")\n";
       });
 
       Blockly.Blocks["dobot_conveyor"] = {
@@ -1460,7 +1556,7 @@
         const g = generator || PY;
         var speed = g.valueToCode(block, "SPEED", PY_ORDER_NONE) || "0.5";
         var dir = g.valueToCode(block, "DIR", PY_ORDER_NONE) || "1";
-        return "device.conveyor_belt(" + speed + ", " + dir + ", 0)\n";
+        return "script_conveyor(" + speed + ", " + dir + ", 0)\n";
       });
 
       Blockly.Blocks["dobot_color_sensor"] = {
@@ -1483,6 +1579,52 @@
           "(device.get_color(port=Dobot.PORT_GP2)[" + c + "] == 1)",
           PY_ORDER_REL,
         ];
+      });
+
+      Blockly.Blocks["dobot_ir_sensor"] = {
+        init: function() {
+          this.appendDummyInput()
+            .appendField("IR detected")
+            .appendField(
+              new Blockly.FieldDropdown([
+                ["GP1", "GP1"],
+                ["GP2", "GP2"],
+                ["GP4", "GP4"],
+                ["GP5", "GP5"],
+              ]),
+              "PORT",
+            );
+          this.setOutput(true, "Boolean");
+          this.setColour(230);
+        },
+      };
+      registerPyBlock("dobot_ir_sensor", function(block) {
+        const port = block.getFieldValue("PORT") || "GP4";
+        return ["ir_detected(" + JSON.stringify(port) + ")", PY_ORDER_NONE];
+      });
+
+      Blockly.Blocks["dobot_ir_debug"] = {
+        init: function() {
+          this.appendDummyInput()
+            .appendField("IR debug")
+            .appendField(
+              new Blockly.FieldDropdown([
+                ["GP1", "GP1"],
+                ["GP2", "GP2"],
+                ["GP4", "GP4"],
+                ["GP5", "GP5"],
+              ]),
+              "PORT",
+            );
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(230);
+          this.setTooltip("Schreibt den aktuellen IR-Zustand ins Log");
+        },
+      };
+      registerPyBlock("dobot_ir_debug", function(block) {
+        const port = block.getFieldValue("PORT") || "GP2";
+        return "debug_ir(" + JSON.stringify(port) + ")\n";
       });
 
       Blockly.Blocks["dobot_not_stopped"] = {
@@ -1575,6 +1717,7 @@
       });
 
       let blocklyWorkspace = null;
+      const BLOCKLY_STATE_KEY = "dobot_hub_blockly";
 
       // ── State ─────────────────────────────────────────────────────────────────────
       const S = {
@@ -2123,6 +2266,147 @@
         $("load-modal").classList.remove("hidden");
       }
 
+      function ensureBlocklyWorkspace() {
+        if (blocklyWorkspace) {
+          reparentBlocklyFloatingUi();
+          Blockly.svgResize(blocklyWorkspace);
+          return blocklyWorkspace;
+        }
+        const scriptContainer = $("panel-script");
+        if (scriptContainer) {
+          const setParentContainer =
+            Blockly.setParentContainer || Blockly.common?.setParentContainer;
+          if (typeof setParentContainer === "function") {
+            try {
+              setParentContainer(scriptContainer);
+            } catch (err) {
+              console.warn("setParentContainer failed", err);
+            }
+          }
+        }
+        blocklyWorkspace = Blockly.inject("blocklyDiv", {
+          toolbox: document.getElementById("toolbox"),
+          scrollbars: true,
+          theme: Blockly.Theme
+            ? Blockly.Theme.defineTheme("dark", {
+                base: Blockly.Themes.Classic,
+                componentStyles: {
+                  workspaceBackgroundColour: "#121212",
+                  toolboxBackgroundColour: "#1e1e1e",
+                  toolboxForegroundColour: "#eeeeee",
+                  flyoutBackgroundColour: "#1a1a1a",
+                  flyoutForegroundColour: "#ccc",
+                  flyoutOpacity: 1,
+                  scrollbarColour: "#333333",
+                  insertionMarkerColour: "#fff",
+                  insertionMarkerOpacity: 0.3,
+                  scrollbarOpacity: 1,
+                  cursorColour: "#d0d0d0",
+                },
+              })
+            : undefined,
+        });
+        const storedState = localStorage.getItem(BLOCKLY_STATE_KEY);
+        if (storedState) {
+          try {
+            const dom = xmlTextToDom(storedState);
+            Blockly.Xml.domToWorkspace(dom, blocklyWorkspace);
+          } catch (err) {
+            console.warn("Failed to restore Blockly state", err);
+          }
+        }
+        blocklyWorkspace.addChangeListener(() => {
+          const dom = Blockly.Xml.workspaceToDom(blocklyWorkspace);
+          const xmlText = Blockly.Xml.domToText(dom);
+          localStorage.setItem(BLOCKLY_STATE_KEY, xmlText);
+        });
+        reparentBlocklyFloatingUi();
+        return blocklyWorkspace;
+      }
+
+      function reparentBlocklyFloatingUi() {
+        const parent = $("panel-script");
+        if (!parent) return;
+        [".blocklyWidgetDiv", ".blocklyDropDownDiv", ".blocklyTooltipDiv"].forEach(
+          (sel) => {
+            document.querySelectorAll(sel).forEach((el) => {
+              if (el.parentElement !== parent) parent.appendChild(el);
+            });
+          },
+        );
+      }
+
+      function getScriptSnapshot() {
+        let workspaceXml = localStorage.getItem(BLOCKLY_STATE_KEY) || "";
+        let code = $("script-editor").value || "";
+        if (blocklyWorkspace) {
+          const dom = Blockly.Xml.workspaceToDom(blocklyWorkspace);
+          workspaceXml = Blockly.Xml.domToText(dom);
+          try {
+            code = generatePyCode();
+          } catch (err) {
+            console.warn("Script code generation failed while saving", err);
+          }
+        }
+        return { workspaceXml, code };
+      }
+
+      function clearScriptWorkspace() {
+        ensureBlocklyWorkspace();
+        if (blocklyWorkspace) {
+          blocklyWorkspace.clear();
+          Blockly.svgResize(blocklyWorkspace);
+        }
+        localStorage.removeItem(BLOCKLY_STATE_KEY);
+        const ta = $("script-editor");
+        ta.value = "";
+        ta.style.display = "none";
+      }
+
+      async function openScriptLoad() {
+        const { files } = await (await fetch("/api/scripts/files")).json();
+        const list = $("script-load-list");
+        if (!files.length) {
+          list.innerHTML =
+            '<div style="color:var(--muted);padding:12px;font-size:12px">No saved scripts</div>';
+        } else {
+          list.innerHTML = files
+            .map((f) => `<div class="li" data-f="${f}">${f.replace(".json", "")}</div>`)
+            .join("");
+          list.querySelectorAll(".li").forEach((el) => {
+            el.addEventListener("click", async () => {
+              const r = await post("/api/scripts/load", {
+                filename: el.dataset.f,
+              });
+              if (!r || !r.ok) return;
+              ensureBlocklyWorkspace();
+              if (r.workspace_xml) {
+                try {
+                  const dom = xmlTextToDom(r.workspace_xml);
+                  if (Blockly.Xml.clearWorkspaceAndLoadFromXml) {
+                    Blockly.Xml.clearWorkspaceAndLoadFromXml(dom, blocklyWorkspace);
+                  } else {
+                    blocklyWorkspace.clear();
+                    Blockly.Xml.domToWorkspace(dom, blocklyWorkspace);
+                  }
+                  localStorage.setItem(BLOCKLY_STATE_KEY, r.workspace_xml);
+                } catch (err) {
+                  console.error("Failed to load script workspace", err);
+                }
+              } else {
+                blocklyWorkspace.clear();
+                localStorage.removeItem(BLOCKLY_STATE_KEY);
+              }
+              $("script-editor").value = r.code || "";
+              $("inp-script-name").value = r.name || el.dataset.f.replace(".json", "");
+              $("script-load-modal").classList.add("hidden");
+              if (blocklyWorkspace) Blockly.svgResize(blocklyWorkspace);
+            });
+          });
+        }
+        $("script-load-modal").classList.remove("hidden");
+      }
+
       // ── Color sensor ──────────────────────────────────────────────────────────────
       let autoPoll = false,
         pollTimer = null;
@@ -2409,7 +2693,66 @@
         };
 
         // Script Editor Tabs
-        $("tab-seq-btn").onclick = () => {
+        const scriptPanel = $("panel-script");
+        const btnScriptFs = $("btn-script-fullscreen");
+
+        const isScriptFullscreen = () =>
+          document.fullscreenElement === scriptPanel ||
+          document.webkitFullscreenElement === scriptPanel;
+
+        const updateScriptFsUi = () => {
+          const on = isScriptFullscreen();
+          btnScriptFs.textContent = on ? "Exit Fullscreen" : "Fullscreen";
+          btnScriptFs.className = on ? "danger" : "ghost";
+          reparentBlocklyFloatingUi();
+          if (blocklyWorkspace) Blockly.svgResize(blocklyWorkspace);
+        };
+
+        const enterScriptFullscreen = async () => {
+          if (scriptPanel.requestFullscreen) {
+            await scriptPanel.requestFullscreen();
+            return;
+          }
+          if (scriptPanel.webkitRequestFullscreen) {
+            scriptPanel.webkitRequestFullscreen();
+            return;
+          }
+          addLog({
+            level: "WARN",
+            ts: new Date().toLocaleTimeString(),
+            msg: "Fullscreen API not supported in this browser.",
+          });
+        };
+
+        const exitScriptFullscreen = async () => {
+          if (document.exitFullscreen && document.fullscreenElement) {
+            await document.exitFullscreen();
+            return;
+          }
+          if (document.webkitExitFullscreen && document.webkitFullscreenElement) {
+            document.webkitExitFullscreen();
+          }
+        };
+
+        btnScriptFs.onclick = async () => {
+          try {
+            if (isScriptFullscreen()) await exitScriptFullscreen();
+            else await enterScriptFullscreen();
+            reparentBlocklyFloatingUi();
+            updateScriptFsUi();
+          } catch (err) {
+            console.error("Fullscreen toggle failed", err);
+          }
+        };
+
+        document.addEventListener("fullscreenchange", updateScriptFsUi);
+        document.addEventListener("webkitfullscreenchange", updateScriptFsUi);
+        window.addEventListener("resize", () => {
+          if (blocklyWorkspace) Blockly.svgResize(blocklyWorkspace);
+        });
+
+        $("tab-seq-btn").onclick = async () => {
+          if (isScriptFullscreen()) await exitScriptFullscreen();
           $("tab-seq-btn").className = "active";
           $("tab-script-btn").className = "ghost";
           $("panel-seq").style.display = "flex";
@@ -2420,44 +2763,7 @@
           $("tab-seq-btn").className = "ghost";
           $("panel-seq").style.display = "none";
           $("panel-script").style.display = "flex";
-          if (!blocklyWorkspace) {
-            blocklyWorkspace = Blockly.inject('blocklyDiv', {
-              toolbox: document.getElementById('toolbox'),
-              scrollbars: true,
-              theme: Blockly.Theme ? Blockly.Theme.defineTheme('dark', {
-                'base': Blockly.Themes.Classic,
-                'componentStyles': {
-                  'workspaceBackgroundColour': '#121212',
-                  'toolboxBackgroundColour': '#1e1e1e',
-                  'toolboxForegroundColour': '#eeeeee',
-                  'flyoutBackgroundColour': '#1a1a1a',
-                  'flyoutForegroundColour': '#ccc',
-                  'flyoutOpacity': 1,
-                  'scrollbarColour': '#333333',
-                  'insertionMarkerColour': '#fff',
-                  'insertionMarkerOpacity': 0.3,
-                  'scrollbarOpacity': 1,
-                  'cursorColour': '#d0d0d0',
-                }
-              }) : undefined
-            });
-            const storedState = localStorage.getItem('dobot_hub_blockly');
-            if (storedState) {
-              try {
-                const dom = xmlTextToDom(storedState);
-                Blockly.Xml.domToWorkspace(dom, blocklyWorkspace);
-              } catch (err) {
-                console.warn("Failed to restore Blockly state", err);
-              }
-            }
-            blocklyWorkspace.addChangeListener(() => {
-              const dom = Blockly.Xml.workspaceToDom(blocklyWorkspace);
-              const xmlText = Blockly.Xml.domToText(dom);
-              localStorage.setItem('dobot_hub_blockly', xmlText);
-            });
-          } else {
-            Blockly.svgResize(blocklyWorkspace);
-          }
+          ensureBlocklyWorkspace();
         };
         $("btn-run-script").onclick = () => {
           try {
@@ -2497,6 +2803,22 @@
         };
         $("btn-stop-script").onclick = () => {
           post("/api/sequence/stop"); // reuse existing stop which cancels everything
+        };
+        $("btn-script-save").onclick = async () => {
+          const name = $("inp-script-name").value.trim();
+          if (!name) return;
+          ensureBlocklyWorkspace();
+          const snap = getScriptSnapshot();
+          const r = await post("/api/scripts/save", {
+            name,
+            workspace_xml: snap.workspaceXml,
+            code: snap.code,
+          });
+          if (r?.name) $("inp-script-name").value = r.name;
+        };
+        $("btn-script-load").onclick = openScriptLoad;
+        $("btn-script-clear").onclick = () => {
+          clearScriptWorkspace();
         };
 
         document.addEventListener("keydown", (e) => {
@@ -2540,6 +2862,12 @@
         $("load-modal").onclick = (e) => {
           if (e.target === $("load-modal"))
             $("load-modal").classList.add("hidden");
+        };
+        $("slm-cancel").onclick = () =>
+          $("script-load-modal").classList.add("hidden");
+        $("script-load-modal").onclick = (e) => {
+          if (e.target === $("script-load-modal"))
+            $("script-load-modal").classList.add("hidden");
         };
       });
     </script>
