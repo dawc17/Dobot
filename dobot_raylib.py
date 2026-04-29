@@ -194,11 +194,7 @@ class Button:
         col = (
             Color(40, 40, 52, 255)
             if not self.enabled
-            else a
-            if prs
-            else h_
-            if hov
-            else b
+            else a if prs else h_ if hov else b
         )
         draw_rectangle_rounded(self.rect, 0.22, 4, col)
         if self.style == self.GHOST:
@@ -1419,9 +1415,7 @@ class DobotController:
             lc = (
                 C_ERR
                 if e.level == "ERROR"
-                else C_WARN
-                if e.level == "WARNING"
-                else C_DIM
+                else C_WARN if e.level == "WARNING" else C_DIM
             )
             draw_text(e.msg, PAD + 8 + ts_w, y, FSM, lc)
 

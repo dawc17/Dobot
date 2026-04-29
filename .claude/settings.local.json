@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python *)",
       "Bash(pip list *)",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "Bash(python3 *)"
     ]
   }
 }

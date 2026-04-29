@@ -1135,6 +1135,9 @@
               + Wait Color
             </button>
             <button class="ghost add" data-type="move_to_named">+ Named</button>
+            <button class="ghost add" data-type="if_ir">+ If IR</button>
+            <button class="ghost add" data-type="if_state">+ If State</button>
+            <button class="ghost add" data-type="if_color">+ If Color</button>
           </div>
           <div id="seq-list"></div>
           <div class="btn-row">
@@ -1164,6 +1167,8 @@
           <div class="btn-row" style="margin-top:10px;">
             <button id="btn-run-script" class="success">Run Blocks (Alt+R)</button>
           <button id="btn-stop-script" class="danger">Stop Script</button>
+          <button id="btn-toggle-code" class="ghost">Se Python Code</button>
+            <button id="btn-script-fullscreen" class="ghost">Fullscreen</button>
           <button id="btn-toggle-code" class="ghost">Zeige Python Code</button>
           <button id="btn-apply-code" class="ghost">Übernehmen → Blockly</button>
           <button id="btn-script-fullscreen" class="ghost">Fullscreen</button>
@@ -1208,9 +1213,8 @@
         </block>
         <block type="dobot_color_sensor"></block>
         <block type="dobot_ir_sensor"></block>
-        <block type="dobot_ir_debug"></block>
       </category>
-      <category name="Logik" colour="210">
+      <category name="Logic" colour="210">
         <block type="controls_if"></block>
         <block type="dobot_ir_clause_detected"></block>
         <block type="dobot_ir_clause_clear"></block>
@@ -1221,7 +1225,7 @@
         <block type="logic_null"></block>
         <block type="logic_ternary"></block>
       </category>
-      <category name="Schleifen" colour="120">
+      <category name="Loops" colour="120">
         <block type="dobot_if">
           <value name="COND"><shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow></value>
         </block>
@@ -1245,9 +1249,9 @@
         <block type="controls_flow_statements"></block>
         <block type="dobot_not_stopped"></block>
       </category>
-      <category name="Variablen" colour="330" custom="VARIABLE"></category>
-      <category name="Funktionen" colour="290" custom="PROCEDURE"></category>
-      <category name="Mathematik" colour="230">
+      <category name="Variables" colour="330" custom="VARIABLE"></category>
+      <category name="Functions" colour="290" custom="PROCEDURE"></category>
+      <category name="Math" colour="230">
         <block type="math_number"></block>
         <block type="math_arithmetic"></block>
         <block type="math_single"></block>
@@ -1366,7 +1370,7 @@
           this.appendDummyInput().appendField("▶ START SCRIPT");
           this.setNextStatement(true, null);
           this.setColour(120);
-          this.setTooltip("Markiert den Start des Programms");
+          this.setTooltip("Marks the start of the program");
         }
       };
       registerPyBlock("dobot_start", function(block) {
@@ -1395,10 +1399,10 @@
 
       Blockly.Blocks["dobot_stop"] = {
         init: function() {
-          this.appendDummyInput().appendField("🛑 SCRIPT STOPPEN");
+          this.appendDummyInput().appendField("🛑 STOP SCRIPT");
           this.setPreviousStatement(true, null);
           this.setColour(0);
-          this.setTooltip("Bricht das aktuelle Programm sofort ab");
+          this.setTooltip("Immediately aborts the current program");
         }
       };
       registerPyBlock("dobot_stop", function(block) {
@@ -1444,7 +1448,7 @@
       Blockly.Blocks["dobot_move_to_current"] = {
         init: function() {
           this.appendDummyInput()
-            .appendField("Gehe zu Position")
+            .appendField("Go to Position")
             .appendField("X")
             .appendField(new Blockly.FieldNumber(0, -1000, 1000, 0.1), "X")
             .appendField("Y")
@@ -1458,7 +1462,7 @@
           this.setNextStatement(true, null);
           this.setColour(230);
           this.setTooltip(
-            "Setzt beim Einfügen automatisch die aktuelle Roboterposition",
+            "Automatically sets the current robot position when inserted",
           );
           this._seededFromLivePos = false;
         },
@@ -1588,20 +1592,48 @@
         init: function() {
           this.appendDummyInput()
               .appendField("Read Color")
-              .appendField(new Blockly.FieldDropdown([["Red", "0"], ["Green", "1"], ["Blue", "2"]]), "COLOR");
+              .appendField(new Blockly.FieldDropdown([["Red", "0"], ["Green", "1"], ["Blue", "2"]]), "COLOR")
+              .appendField("port")
+              .appendField(new Blockly.FieldDropdown([["GP1", "PORT_GP1"], ["GP2", "PORT_GP2"], ["GP4", "PORT_GP4"], ["GP5", "PORT_GP5"]]), "PORT");
           this.setOutput(true, "Boolean");
           this.setColour(230);
+          this.setTooltip("Returns True if the selected color channel is detected on the chosen sensor port");
         }
       };
       registerPyBlock("dobot_color_sensor", function(block, generator) {
         const g = generator || PY;
         var c = block.getFieldValue("COLOR");
+        var port = block.getFieldValue("PORT") || "PORT_GP2";
         if (g.definitions_) {
-          g.definitions_.enable_color =
-            "core._color_enabled = Dobot.PORT_GP2\ndevice.set_color(enable=True, port=Dobot.PORT_GP2)";
+          g.definitions_["enable_color_" + port] =
+            "core._color_enabled = Dobot." + port + "\ndevice.set_color(enable=True, port=Dobot." + port + ")";
         }
         return [
-          "(device.get_color(port=Dobot.PORT_GP2)[" + c + "] == 1)",
+          "(device.get_color(port=Dobot." + port + ")[" + c + "] == 1)",
+          PY_ORDER_REL,
+        ];
+      });
+
+      Blockly.Blocks["dobot_ir_sensor"] = {
+        init: function() {
+          this.appendDummyInput()
+              .appendField("IR/Movement Sensor")
+              .appendField("port")
+              .appendField(new Blockly.FieldDropdown([["GP4", "PORT_GP4"], ["GP1", "PORT_GP1"], ["GP2", "PORT_GP2"], ["GP5", "PORT_GP5"]]), "PORT");
+          this.setOutput(true, "Boolean");
+          this.setColour(60);
+          this.setTooltip("Returns True when the IR/movement sensor detects an object on the selected port (GP4 is the common default)");
+        }
+      };
+      registerPyBlock("dobot_ir_sensor", function(block, generator) {
+        const g = generator || PY;
+        var port = block.getFieldValue("PORT") || "PORT_GP4";
+        if (g.definitions_) {
+          g.definitions_["enable_ir_" + port] =
+            "core._ir_enabled = Dobot." + port + "\ndevice.set_ir(enable=True, port=Dobot." + port + ")";
+        }
+        return [
+          "(bool(device.get_ir(port=Dobot." + port + ")))",
           PY_ORDER_REL,
         ];
       });
@@ -2061,6 +2093,9 @@
         color_branch: "#b040c0",
         wait_for_color: "#9030a8",
         move_to_named: "#38b2d0",
+        if_ir: "#c83848",
+        if_state: "#2090a8",
+        if_color: "#b040c0",
       };
 
       function slabel(s) {
@@ -2105,6 +2140,31 @@
           ].filter(Boolean);
           const to = p.timeout > 0 ? ` ${p.timeout.toFixed(0)}s` : " ∞";
           return `Wait Color ${colors.join("|") || "?"}${to}`;
+        }
+        if (t === "if_ir") {
+          const pnames = {0:"GP1",1:"GP2",2:"GP4",3:"GP5"};
+          const port = pnames[p.port] ?? "GP?";
+          const parts = [];
+          if (p.on_detected)     parts.push(`→${p.on_detected}`);
+          if (p.on_not_detected) parts.push(`not→${p.on_not_detected}`);
+          return `If IR [${port}] ${parts.length ? parts.join(", ") : "(no branch)"}`;
+        }
+        if (t === "if_state") {
+          const labels = {suction_on:"Suction ON",suction_off:"Suction OFF",conveyor_on:"Conveyor ON",conveyor_off:"Conveyor OFF"};
+          const cond = labels[p.condition] ?? p.condition ?? "?";
+          const parts = [];
+          if (p.on_true)  parts.push(`→${p.on_true}`);
+          if (p.on_false) parts.push(`else→${p.on_false}`);
+          return `If ${cond} ${parts.length ? parts.join(", ") : "(no branch)"}`;
+        }
+        if (t === "if_color") {
+          const pnames = {0:"GP1",1:"GP2",2:"GP4",3:"GP5"};
+          const port = pnames[p.port] ?? "GP?";
+          const color = (p.color ?? "red")[0].toUpperCase() + (p.color ?? "red").slice(1);
+          const parts = [];
+          if (p.on_detected)     parts.push(`→${p.on_detected}`);
+          if (p.on_not_detected) parts.push(`not→${p.on_not_detected}`);
+          return `If ${color} [${port}] ${parts.length ? parts.join(", ") : "(no branch)"}`;
         }
         return t;
       }
@@ -2188,6 +2248,9 @@
             dz: 0,
             dr: 0,
           },
+          if_ir: { port: 2, on_detected: 0, on_not_detected: 0 },
+          if_state: { condition: "suction_on", on_true: 0, on_false: 0 },
+          if_color: { port: 1, color: "red", on_detected: 0, on_not_detected: 0 },
         };
         const params = map[type] ?? {};
         if (type === "suction" || type === "gripper") {
@@ -2267,6 +2330,41 @@
           { k: "dz", l: "dZ offset (mm)" },
           { k: "dr", l: "dR offset (°)" },
         ],
+        if_ir: [
+          { k: "port", l: "Sensor port", type: "select", options: [
+            { value: "0", label: "GP1" },
+            { value: "1", label: "GP2" },
+            { value: "2", label: "GP4" },
+            { value: "3", label: "GP5" },
+          ]},
+          { k: "on_detected",     l: "Detected → go to step# (0=continue)"     },
+          { k: "on_not_detected", l: "Not detected → go to step# (0=continue)" },
+        ],
+        if_state: [
+          { k: "condition", l: "Condition", type: "select", options: [
+            { value: "suction_on",   label: "Suction ON"    },
+            { value: "suction_off",  label: "Suction OFF"   },
+            { value: "conveyor_on",  label: "Conveyor ON"   },
+            { value: "conveyor_off", label: "Conveyor OFF"  },
+          ]},
+          { k: "on_true",  l: "True → go to step# (0=continue)"  },
+          { k: "on_false", l: "False → go to step# (0=continue)" },
+        ],
+        if_color: [
+          { k: "port", l: "Sensor port", type: "select", options: [
+            { value: "0", label: "GP1" },
+            { value: "1", label: "GP2" },
+            { value: "2", label: "GP4" },
+            { value: "3", label: "GP5" },
+          ]},
+          { k: "color", l: "Color", type: "select", options: [
+            { value: "red",   label: "Red"   },
+            { value: "green", label: "Green" },
+            { value: "blue",  label: "Blue"  },
+          ]},
+          { k: "on_detected",     l: "Detected → go to step# (0=continue)"     },
+          { k: "on_not_detected", l: "Not detected → go to step# (0=continue)" },
+        ],
       };
       let editIdx = -1;
 
@@ -2283,6 +2381,12 @@
           $("m-fields").innerHTML = flds
             .map((f) => {
               const v = s.params[f.k];
+              if (f.type === "select") {
+                const opts = f.options.map(o =>
+                  `<option value="${esc(o.value)}"${v === o.value ? " selected" : ""}>${esc(o.label)}</option>`
+                ).join("");
+                return `<div class="frow"><label>${f.l}</label><select data-k="${f.k}">${opts}</select></div>`;
+              }
               const isText = f.type === "text";
               const dv = isText ? (v ?? "") : (typeof v === "boolean" ? (v ? 1 : 0) : v);
               const attrs = isText ? "" : 'type="number" step="any"';
@@ -2302,6 +2406,10 @@
           return;
         }
         const step = JSON.parse(JSON.stringify(S.steps[editIdx]));
+        document.querySelectorAll("#m-fields select").forEach((sel) => {
+          const k = sel.dataset.k, cur = step.params[k], v = sel.value;
+          step.params[k] = typeof cur === "number" ? (Number.isInteger(cur) ? parseInt(v) : parseFloat(v)) : v;
+        });
         document.querySelectorAll("#m-fields input").forEach((inp) => {
           const k = inp.dataset.k,
             cur = step.params[k],
