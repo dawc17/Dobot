@@ -83,6 +83,29 @@ def step_label(step: dict) -> str:
         return f"Loop {p.get('count', 1)} times"
     if t == "wait_io":
         return f"Wait IO #{p.get('address', 1)} {'HIGH' if p.get('state', True) else 'LOW'}"
+    if t == "if_io":
+        parts = []
+        if p.get("on_high", 0): parts.append(f"HIGH→{p['on_high']}")
+        if p.get("on_low", 0):  parts.append(f"LOW→{p['on_low']}")
+        return f"If IO #{p.get('address', 1)} {', '.join(parts) or '(no branch)'}"
+    if t == "if_state":
+        _labels = {
+            "suction_on": "Suction ON", "suction_off": "Suction OFF",
+            "conveyor_on": "Conveyor ON", "conveyor_off": "Conveyor OFF",
+        }
+        cond = _labels.get(p.get("condition", "suction_on"), p.get("condition", "?"))
+        parts = []
+        if p.get("on_true",  0): parts.append(f"→{p['on_true']}")
+        if p.get("on_false", 0): parts.append(f"else→{p['on_false']}")
+        return f"If {cond} {', '.join(parts) or '(no branch)'}"
+    if t == "if_color":
+        _pnames = {0:"GP1", 1:"GP2", 2:"GP4", 3:"GP5"}
+        port = _pnames.get(int(p.get("port", 1)), "?")
+        color = p.get("color", "red").capitalize()
+        parts = []
+        if p.get("on_detected",     0): parts.append(f"→{p['on_detected']}")
+        if p.get("on_not_detected", 0): parts.append(f"not→{p['on_not_detected']}")
+        return f"If {color} [{port}] {', '.join(parts) or '(no branch)'}"
     if t == "run_sequence":
         return f"Run Sequence '{p.get('filename', '?')}'"
     return t
@@ -1059,6 +1082,62 @@ class DobotCore:
                     self.logger.warning(f"IO wait timeout on #{address}")
                     break
                 self.seq_stop_evt.wait(timeout=0.1)
+        elif t == "if_io":
+            address = p.get("address", 1)
+            on_high = p.get("on_high", 0)
+            on_low  = p.get("on_low",  0)
+            try:
+                state = bool(self.device.get_io(address))
+                label = "HIGH" if state else "LOW"
+                self.logger.info(f"If IO #{address}: {label}")
+                target = on_high if state else on_low
+                if target > 0:
+                    self.logger.info(f"  → jumping to step {target}")
+                    self._seq_jump = target - 1
+            except Exception as e:
+                self.logger.warning(f"if_io read error on #{address}: {e}")
+        elif t == "if_state":
+            condition = p.get("condition", "suction_on")
+            on_true  = p.get("on_true",  0)
+            on_false = p.get("on_false", 0)
+            state_map = {
+                "suction_on":   self.vacuum_on,
+                "suction_off":  not self.vacuum_on,
+                "conveyor_on":  self.conv_running,
+                "conveyor_off": not self.conv_running,
+            }
+            result = state_map.get(condition, False)
+            self.logger.info(f"If {condition}: {'true → branch' if result else 'false → branch'}")
+            target = on_true if result else on_false
+            if target > 0:
+                self.logger.info(f"  → jumping to step {target}")
+                self._seq_jump = target - 1
+        elif t == "if_color":
+            _PORTS = [Dobot.PORT_GP1, Dobot.PORT_GP2, Dobot.PORT_GP4, Dobot.PORT_GP5]
+            _PNAMES = ["GP1", "GP2", "GP4", "GP5"]
+            port_idx = min(max(int(p.get("port", 1)), 0), 3)
+            port = _PORTS[port_idx]
+            color = p.get("color", "red")
+            color_idx = {"red": 0, "green": 1, "blue": 2}.get(color, 0)
+            on_detected     = p.get("on_detected",     0)
+            on_not_detected = p.get("on_not_detected", 0)
+            try:
+                with self._dev_lock:
+                    if self._color_enabled != port:
+                        self.device.set_color(enable=True, port=port)
+                        time.sleep(0.15)
+                        self._color_enabled = port
+                    rgb = self.device.get_color(port=port)
+                detected = bool(rgb[color_idx])
+                self.logger.info(
+                    f"If {color.upper()} [{_PNAMES[port_idx]}]: {'detected' if detected else 'not detected'}"
+                )
+                target = on_detected if detected else on_not_detected
+                if target > 0:
+                    self.logger.info(f"  → jumping to step {target}")
+                    self._seq_jump = target - 1
+            except Exception as e:
+                self.logger.warning(f"if_color read error: {e}")
         elif t == "run_sequence":
             filename = p.get("filename", "")
             if not filename.endswith(".json"):
@@ -1342,6 +1421,8 @@ def api_ir_sensor():
             time.sleep(0.15)
             core._ir_enabled = port
         detected = core.device.get_ir(port=port)
+        port_name = d.get("port", "GP4")
+        core.logger.info(f"IR [{port_name}]: {'DETECTED' if detected else 'clear'} (raw={detected})")
         return jsonify(detected=bool(detected))
     except Exception as e:
         core._ir_enabled = None
