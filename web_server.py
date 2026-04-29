@@ -20,24 +20,25 @@ from serial.tools import list_ports
 
 
 def _ir_set_v2(device, enable: bool, port: int):
-    """Enable/disable IR sensor using V2 protocol (appends version byte 0x01)."""
+    """Enable IR sensor in V2 mode. Mirrors pydobotplus.set_color (queued, version=1=V2)."""
     msg = Message()
     msg.id = 138
-    msg.ctrl = 0x02
-    msg.params = bytearray([int(enable), port, 0x01])
+    msg.ctrl = 0x03  # write + queued (matches set_color)
+    msg.params = bytearray([int(enable), port, 0x01])  # [enable, port, version=V2]
     device._send_command(msg)
 
 
 def _ir_get_v2(device, port: int) -> bool:
-    """Read IR sensor using V2 protocol. Returns True if object detected."""
+    """Read IR sensor in V2 mode. Mirrors pydobotplus.get_color: [port, 0x01, version=1]."""
+    log = logging.getLogger("dobot")
     msg = Message()
     msg.id = 138
     msg.ctrl = 0x00
-    msg.params = bytearray([port, 0x01])
-    response = device._send_command(msg)
-    raw_hex = " ".join(f"{b:02x}" for b in response.params)
-    logging.getLogger("dobot").info(f"IR raw response params: [{raw_hex}]")
-    return bool(struct.unpack_from('?', response.params, 0)[0])
+    msg.params = bytearray([port, 0x01, 0x01])  # [port, separator/0x01, version=V2]
+    r = device._send_command(msg)
+    raw_hex = " ".join(f"{b:02x}" for b in r.params)
+    log.info(f"IR V2-GET port={port} -> [{raw_hex}]")
+    return bool(struct.unpack_from('?', r.params, 0)[0])
 
 SEQUENCES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sequences")
 SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
