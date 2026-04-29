@@ -939,10 +939,16 @@ class DobotCore:
                             self._dev_lock.release()
                     return False
 
+                def ir_is_detected(port="GP4"):
+                    return ir_detected(port)
+
+                def ir_is_clear(port="GP4"):
+                    return not ir_detected(port)
+
                 def debug_ir(port="GP2"):
                     _check_stopped()
                     p = str(port or "GP2").strip().upper()
-                    state = ir_detected(p)
+                    state = ir_is_detected(p)
                     self.logger.info(f"IR {p}: {'DETECTED' if state else 'clear'}")
                     return state
 
@@ -984,6 +990,8 @@ class DobotCore:
                     "named_positions": self.named_positions,
                     "ir_detected": ir_detected,
                     "read_ir": ir_detected,
+                    "ir_is_detected": ir_is_detected,
+                    "ir_is_clear": ir_is_clear,
                     "debug_ir": debug_ir,
                     "debug_ir_gp2": lambda: debug_ir("GP2"),
                     "stopped": stopped,

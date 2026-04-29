@@ -1091,6 +1091,7 @@
             </select>
             <button id="btn-read-sensor" class="ghost">Read</button>
             <button id="btn-autopoll" class="ghost">Auto: OFF</button>
+            <button id="btn-ir-log" class="ghost">IR Log: OFF</button>
           </div>
         </div>
       </div>
@@ -1162,12 +1163,15 @@
           <div class="ph">Blockly Script Editor</div>
           <div id="blocklyDiv" style="flex:1; width:100%; border:1px solid var(--border); border-radius:3px;"></div>
           <!-- Versteckter Texteditor als Backup/Fallback -->
-          <textarea id="script-editor" style="display:none; flex:0.3; background:var(--deep); color:var(--text); border:1px solid var(--border); border-radius:3px; font-family:var(--mono); font-size:13px; padding:8px; resize:none; outline:none; white-space:pre; overflow:auto; margin-top:5px;" spellcheck="false" readonly></textarea>
+          <textarea id="script-editor" style="display:none; flex:0.3; background:var(--deep); color:var(--text); border:1px solid var(--border); border-radius:3px; font-family:var(--mono); font-size:13px; padding:8px; resize:none; outline:none; white-space:pre; overflow:auto; margin-top:5px;" spellcheck="false"></textarea>
           <div class="btn-row" style="margin-top:10px;">
             <button id="btn-run-script" class="success">Run Blocks (Alt+R)</button>
           <button id="btn-stop-script" class="danger">Stop Script</button>
           <button id="btn-toggle-code" class="ghost">Se Python Code</button>
             <button id="btn-script-fullscreen" class="ghost">Fullscreen</button>
+          <button id="btn-toggle-code" class="ghost">Zeige Python Code</button>
+          <button id="btn-apply-code" class="ghost">Übernehmen → Blockly</button>
+          <button id="btn-script-fullscreen" class="ghost">Fullscreen</button>
         </div>
           <div class="btn-row" style="margin-top:8px;">
             <button id="btn-script-save" class="ghost">Save Script</button>
@@ -1182,6 +1186,7 @@
     <xml id="toolbox" style="display: none">
       <category name="Dobot" colour="230">
         <block type="dobot_start"></block>
+        <block type="dobot_raw_python"></block>
         <block type="dobot_stop"></block>
         <block type="dobot_log">
           <value name="MSG">
@@ -1211,6 +1216,8 @@
       </category>
       <category name="Logic" colour="210">
         <block type="controls_if"></block>
+        <block type="dobot_ir_clause_detected"></block>
+        <block type="dobot_ir_clause_clear"></block>
         <block type="logic_compare"></block>
         <block type="logic_operation"></block>
         <block type="logic_negate"></block>
@@ -1368,6 +1375,26 @@
       };
       registerPyBlock("dobot_start", function(block) {
         return "# --- SCRIPT START ---\n";
+      });
+
+      Blockly.Blocks["dobot_raw_python"] = {
+        init: function() {
+          const LabelField = Blockly.FieldLabelSerializable || Blockly.FieldLabel;
+          this.appendDummyInput()
+            .appendField("🐍 Raw Python")
+            .appendField(new LabelField("(leer)"), "PREVIEW");
+          this.setPreviousStatement(true, null);
+          this.setNextStatement(true, null);
+          this.setColour(260);
+          this.setTooltip(
+            "Enthält direkt geschriebenen Python-Code und wird 1:1 ausgeführt",
+          );
+        },
+      };
+      registerPyBlock("dobot_raw_python", function(block) {
+        let code = String(block.data || "").replace(/\r\n/g, "\n");
+        if (code && !code.endsWith("\n")) code += "\n";
+        return code;
       });
 
       Blockly.Blocks["dobot_stop"] = {
@@ -1657,6 +1684,54 @@
         return "debug_ir(" + JSON.stringify(port) + ")\n";
       });
 
+      Blockly.Blocks["dobot_ir_clause_detected"] = {
+        init: function() {
+          this.appendDummyInput()
+            .appendField("IR")
+            .appendField(
+              new Blockly.FieldDropdown([
+                ["GP1", "GP1"],
+                ["GP2", "GP2"],
+                ["GP4", "GP4"],
+                ["GP5", "GP5"],
+              ]),
+              "PORT",
+            )
+            .appendField("is DETECTED");
+          this.setOutput(true, "Boolean");
+          this.setColour(210);
+          this.setTooltip("Bedingung: IR Sensor erkennt ein Objekt");
+        },
+      };
+      registerPyBlock("dobot_ir_clause_detected", function(block) {
+        const port = block.getFieldValue("PORT") || "GP4";
+        return ["ir_is_detected(" + JSON.stringify(port) + ")", PY_ORDER_NONE];
+      });
+
+      Blockly.Blocks["dobot_ir_clause_clear"] = {
+        init: function() {
+          this.appendDummyInput()
+            .appendField("IR")
+            .appendField(
+              new Blockly.FieldDropdown([
+                ["GP1", "GP1"],
+                ["GP2", "GP2"],
+                ["GP4", "GP4"],
+                ["GP5", "GP5"],
+              ]),
+              "PORT",
+            )
+            .appendField("is CLEAR");
+          this.setOutput(true, "Boolean");
+          this.setColour(210);
+          this.setTooltip("Bedingung: IR Sensor erkennt kein Objekt");
+        },
+      };
+      registerPyBlock("dobot_ir_clause_clear", function(block) {
+        const port = block.getFieldValue("PORT") || "GP4";
+        return ["ir_is_clear(" + JSON.stringify(port) + ")", PY_ORDER_NOT];
+      });
+
       Blockly.Blocks["dobot_not_stopped"] = {
         init: function() {
           this.appendDummyInput().appendField("Script not stopped");
@@ -1892,6 +1967,15 @@
           btn.textContent = "Connect";
           btn.className = "";
           btn.disabled = false;
+          if (irLogEnabled) {
+            irLogEnabled = false;
+            clearInterval(irLogTimer);
+            irLogTimer = null;
+            if ($("btn-ir-log")) {
+              $("btn-ir-log").textContent = "IR Log: OFF";
+              $("btn-ir-log").className = "ghost";
+            }
+          }
         }
       }
 
@@ -2430,6 +2514,49 @@
         return blocklyWorkspace;
       }
 
+      function normalizeScriptCodeForWorkspace(code) {
+        let c = String(code || "").replace(/\r\n/g, "\n");
+        c = c.replace(/^\s*#\s*---\s*SCRIPT START\s*---\s*\n?/i, "");
+        return c.trimEnd();
+      }
+
+      function rawCodePreview(code) {
+        const line = String(code || "")
+          .split("\n")
+          .map((x) => x.trim())
+          .find((x) => x.length > 0);
+        if (!line) return "(leer)";
+        return line.length > 42 ? `${line.slice(0, 39)}...` : line;
+      }
+
+      function applyPythonCodeToBlockly(code) {
+        ensureBlocklyWorkspace();
+        if (!blocklyWorkspace) return;
+        const raw = normalizeScriptCodeForWorkspace(code);
+        blocklyWorkspace.clear();
+
+        const start = blocklyWorkspace.newBlock("dobot_start");
+        start.initSvg();
+        start.render();
+        start.moveBy(24, 24);
+
+        if (raw) {
+          const rawBlock = blocklyWorkspace.newBlock("dobot_raw_python");
+          rawBlock.data = raw;
+          rawBlock.setFieldValue(rawCodePreview(raw), "PREVIEW");
+          rawBlock.initSvg();
+          rawBlock.render();
+          rawBlock.moveBy(24, 110);
+          if (start.nextConnection && rawBlock.previousConnection) {
+            start.nextConnection.connect(rawBlock.previousConnection);
+          }
+        }
+
+        Blockly.svgResize(blocklyWorkspace);
+        const dom = Blockly.Xml.workspaceToDom(blocklyWorkspace);
+        localStorage.setItem(BLOCKLY_STATE_KEY, Blockly.Xml.domToText(dom));
+      }
+
       function reparentBlocklyFloatingUi() {
         const parent = $("panel-script");
         if (!parent) return;
@@ -2443,15 +2570,19 @@
       }
 
       function getScriptSnapshot() {
+        const ta = $("script-editor");
+        const editorVisible = ta && ta.style.display !== "none";
         let workspaceXml = localStorage.getItem(BLOCKLY_STATE_KEY) || "";
-        let code = $("script-editor").value || "";
+        let code = ta?.value || "";
         if (blocklyWorkspace) {
           const dom = Blockly.Xml.workspaceToDom(blocklyWorkspace);
           workspaceXml = Blockly.Xml.domToText(dom);
-          try {
-            code = generatePyCode();
-          } catch (err) {
-            console.warn("Script code generation failed while saving", err);
+          if (!editorVisible) {
+            try {
+              code = generatePyCode();
+            } catch (err) {
+              console.warn("Script code generation failed while saving", err);
+            }
           }
         }
         return { workspaceXml, code };
@@ -2466,7 +2597,9 @@
         localStorage.removeItem(BLOCKLY_STATE_KEY);
         const ta = $("script-editor");
         ta.value = "";
+        ta.dataset.dirty = "0";
         ta.style.display = "none";
+        $("btn-toggle-code").textContent = "Zeige Python Code";
       }
 
       async function openScriptLoad() {
@@ -2500,10 +2633,10 @@
                   console.error("Failed to load script workspace", err);
                 }
               } else {
-                blocklyWorkspace.clear();
-                localStorage.removeItem(BLOCKLY_STATE_KEY);
+                applyPythonCodeToBlockly(r.code || "");
               }
               $("script-editor").value = r.code || "";
+              $("script-editor").dataset.dirty = "0";
               $("inp-script-name").value = r.name || el.dataset.f.replace(".json", "");
               $("script-load-modal").classList.add("hidden");
               if (blocklyWorkspace) Blockly.svgResize(blocklyWorkspace);
@@ -2516,6 +2649,8 @@
       // ── Color sensor ──────────────────────────────────────────────────────────────
       let autoPoll = false,
         pollTimer = null;
+      let irLogEnabled = false,
+        irLogTimer = null;
 
       function setColorDots(r, g, b) {
         $("dot-r").classList.toggle("lit", !!r);
@@ -2538,6 +2673,22 @@
         } catch (_) {}
       }
 
+      async function logIrStateOnce() {
+        if (!S.connected) return;
+        const port = $("ir-port").value;
+        try {
+          const di = await post("/api/ir_sensor", { port });
+          if (di && !di.error) {
+            setIrDot(di.detected);
+            addLog({
+              level: "INFO",
+              ts: new Date().toLocaleTimeString(),
+              msg: `IR ${port}: ${di.detected ? "DETECTED" : "clear"}`,
+            });
+          }
+        } catch (_) {}
+      }
+
       function toggleAutoPoll() {
         autoPoll = !autoPoll;
         $("btn-autopoll").textContent = `Auto: ${autoPoll ? "ON" : "OFF"}`;
@@ -2548,6 +2699,19 @@
         } else {
           clearInterval(pollTimer);
           pollTimer = null;
+        }
+      }
+
+      function toggleIrLog() {
+        irLogEnabled = !irLogEnabled;
+        $("btn-ir-log").textContent = `IR Log: ${irLogEnabled ? "ON" : "OFF"}`;
+        $("btn-ir-log").className = irLogEnabled ? "success" : "ghost";
+        if (irLogEnabled) {
+          logIrStateOnce();
+          irLogTimer = setInterval(logIrStateOnce, 500);
+        } else {
+          clearInterval(irLogTimer);
+          irLogTimer = null;
         }
       }
 
@@ -2742,6 +2906,7 @@
 
         $("btn-read-sensor").onclick = readSensors;
         $("btn-autopoll").onclick = toggleAutoPoll;
+        $("btn-ir-log").onclick = toggleIrLog;
 
         document
           .querySelectorAll(".add")
@@ -2874,10 +3039,14 @@
         $("btn-run-script").onclick = () => {
           try {
             let code;
-            if (blocklyWorkspace) {
+            const ta = $("script-editor");
+            const editorVisible = ta.style.display !== "none";
+            if (editorVisible) {
+              code = ta.value;
+            } else if (blocklyWorkspace) {
               code = generatePyCode();
             } else {
-              code = $("script-editor").value;
+              code = ta.value;
             }
             post("/api/run_script", { code: code });
           } catch (err) {
@@ -2893,19 +3062,42 @@
         $("btn-toggle-code").onclick = () => {
           const ta = $("script-editor");
           if (ta.style.display === "none") {
-             ta.style.display = "block";
-             if (blocklyWorkspace) {
-               try {
-                 ta.value = generatePyCode();
-               } catch (err) {
-                 ta.value = `# Failed to generate code:\n# ${
-                   err?.message || String(err)
-                 }`;
-               }
-             }
+            ta.style.display = "block";
+            $("btn-toggle-code").textContent = "Verstecke Python Code";
+            if (ta.dataset.dirty !== "1" && blocklyWorkspace) {
+              try {
+                ta.value = generatePyCode();
+                ta.dataset.dirty = "0";
+              } catch (err) {
+                ta.value = `# Failed to generate code:\n# ${
+                  err?.message || String(err)
+                }`;
+                ta.dataset.dirty = "0";
+              }
+            }
           } else {
-             ta.style.display = "none";
+            if (ta.dataset.dirty === "1") {
+              applyPythonCodeToBlockly(ta.value);
+              ta.dataset.dirty = "0";
+              try {
+                ta.value = generatePyCode();
+              } catch (_) {}
+            }
+            ta.style.display = "none";
+            $("btn-toggle-code").textContent = "Zeige Python Code";
           }
+        };
+        $("script-editor").dataset.dirty = "0";
+        $("script-editor").addEventListener("input", () => {
+          $("script-editor").dataset.dirty = "1";
+        });
+        $("btn-apply-code").onclick = () => {
+          const ta = $("script-editor");
+          applyPythonCodeToBlockly(ta.value);
+          ta.dataset.dirty = "0";
+          try {
+            ta.value = generatePyCode();
+          } catch (_) {}
         };
         $("btn-stop-script").onclick = () => {
           post("/api/sequence/stop"); // reuse existing stop which cancels everything
