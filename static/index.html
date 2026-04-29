@@ -1189,7 +1189,7 @@
         <block type="logic_null"></block>
         <block type="logic_ternary"></block>
       </category>
-      <category name="Schleifen" colour="120">
+      <category name="Loops" colour="120">
         <block type="dobot_if">
           <value name="COND"><shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow></value>
         </block>
@@ -1310,7 +1310,7 @@
           this.appendDummyInput().appendField("▶ START SCRIPT");
           this.setNextStatement(true, null);
           this.setColour(120);
-          this.setTooltip("Markiert den Start des Programms");
+          this.setTooltip("Marks the start of the program");
         }
       };
       registerPyBlock("dobot_start", function(block) {
@@ -1319,10 +1319,10 @@
 
       Blockly.Blocks["dobot_stop"] = {
         init: function() {
-          this.appendDummyInput().appendField("🛑 SCRIPT STOPPEN");
+          this.appendDummyInput().appendField("🛑 STOP SCRIPT");
           this.setPreviousStatement(true, null);
           this.setColour(0);
-          this.setTooltip("Bricht das aktuelle Programm sofort ab");
+          this.setTooltip("Immediately aborts the current program");
         }
       };
       registerPyBlock("dobot_stop", function(block) {
