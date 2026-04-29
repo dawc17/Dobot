@@ -19,6 +19,22 @@ from pydobotplus.message import Message
 from serial.tools import list_ports
 
 
+def _quiet_get_color(self, port=Dobot.PORT_GP2, version=0x1):
+    """Replacement for pydobotplus.Dobot.get_color without the spammy print(response)."""
+    msg = Message()
+    msg.id = 137
+    msg.ctrl = 0x00
+    msg.params = bytearray([port, 0x01, version])
+    response = self._send_command(msg)
+    r = struct.unpack_from('?', response.params, 0)[0]
+    g = struct.unpack_from('?', response.params, 1)[0]
+    b = struct.unpack_from('?', response.params, 2)[0]
+    return [r, g, b]
+
+
+Dobot.get_color = _quiet_get_color
+
+
 def _ir_set_v2(device, enable: bool, port: int):
     """Enable IR sensor in V2 mode. Mirrors pydobotplus.set_color (queued, version=1=V2)."""
     msg = Message()
